@@ -13,16 +13,18 @@ namespace DriverNest::Strings {
 // --- Application identity ---
 inline constexpr std::wstring_view AppName        = L"DriverNest";
 inline constexpr std::wstring_view AppTagline     = L"Find it. Verify it. Install it.";
-inline constexpr std::wstring_view AppVersion     = L"1.0.0";
+inline constexpr std::wstring_view AppVersion     = L"1.2.0";
 
 // --- Main window ---
 inline constexpr std::wstring_view WindowTitle    = L"DriverNest";
-inline constexpr std::wstring_view SearchPlaceholder = L"Search devices by name, ID, or class";
+inline constexpr std::wstring_view SearchPlaceholder = L"Search hardware node, ID, or class...";
 
 // --- Toolbar ---
-inline constexpr std::wstring_view BtnScan              = L"Scan";
-inline constexpr std::wstring_view BtnInstallSelected   = L"Install selected";
-inline constexpr std::wstring_view BtnUndoLastBatch     = L"Undo last batch";
+inline constexpr std::wstring_view BtnScan              = L"Scan Hardware";
+inline constexpr std::wstring_view BtnSelectAll         = L"Select All";
+inline constexpr std::wstring_view BtnDeselectAll       = L"Deselect All";
+inline constexpr std::wstring_view BtnInstallSelected   = L"Install Selected";
+inline constexpr std::wstring_view BtnUndoLastBatch     = L"Undo Batch";
 inline constexpr std::wstring_view FilterAll            = L"All";
 inline constexpr std::wstring_view FilterMissing        = L"Missing";
 inline constexpr std::wstring_view FilterOutdated       = L"Outdated";
@@ -45,11 +47,27 @@ inline constexpr std::wstring_view StatusScanning        = L"Scanning...";
 inline constexpr std::wstring_view StatusIdle            = L"Ready";
 
 // --- Device states ---
-inline constexpr std::wstring_view StateOk         = L"OK";
-inline constexpr std::wstring_view StateMissing    = L"Missing driver";
-inline constexpr std::wstring_view StateOutdated   = L"Outdated";
-inline constexpr std::wstring_view StateProblem    = L"Problem";
-inline constexpr std::wstring_view StateUnsigned   = L"Unsigned";
+inline constexpr std::wstring_view StateOk             = L"OK";
+inline constexpr std::wstring_view StateMissing        = L"Missing driver";
+inline constexpr std::wstring_view StateOutdated       = L"Outdated";
+inline constexpr std::wstring_view StateProblem        = L"Problem";
+inline constexpr std::wstring_view StateUnsigned       = L"Unsigned";
+inline constexpr std::wstring_view StatePendingRestart  = L"Reboot Required";
+inline constexpr std::wstring_view StateQueued          = L"Waiting...";
+inline constexpr std::wstring_view StateDownloading     = L"Downloading";
+inline constexpr std::wstring_view StateInstalling      = L"Installing...";
+inline constexpr std::wstring_view StateVerifying       = L"Verifying...";
+inline constexpr std::wstring_view StateInstalled       = L"Installed";
+inline constexpr std::wstring_view StateFailed          = L"Failed";
+
+// --- Rescan prompt after installation ---
+inline constexpr std::wstring_view DlgRescanPromptTitle = L"Installation Complete";
+inline constexpr std::wstring_view DlgRescanPromptBody  = L"Driver installation has finished successfully.\n\nUpdated drivers require a system restart for Windows to load the new kernel drivers.\n\nWould you like to rescan your system now to verify the current hardware state?";
+inline constexpr std::wstring_view DlgRescanBtn         = L"Rescan Now";
+inline constexpr std::wstring_view DlgCloseBtn          = L"Close";
+inline constexpr std::wstring_view StatusRebootPendingNotice = L" driver(s) installed and waiting for restart";
+inline constexpr std::wstring_view StatusNeedInstallNotice   = L" driver(s) need installation";
+inline constexpr std::wstring_view StatusAllUpToDateNotice   = L"All drivers are up to date (system restart pending).";
 
 // --- Status bar time formatting text ---
 inline constexpr std::wstring_view StatusNeverScanned = L"Never";

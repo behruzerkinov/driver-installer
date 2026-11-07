@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(DriverNest
-    VERSION 1.0.0
+    VERSION 1.2.0
     DESCRIPTION "Free, lightweight, portable Windows driver installer"
     LANGUAGES CXX
 )
@@ -53,6 +53,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/install/Installer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/install/RestorePoint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/install/Verify.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/install/InstallHistory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/net/Downloader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/net/Hash.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MainWindow.cpp
@@ -90,6 +91,7 @@ target_sources(DriverNest
         src/install/Installer.cpp
         src/install/RestorePoint.cpp
         src/install/Verify.cpp
+        src/install/InstallHistory.cpp
 
         # networking
         src/net/Downloader.cpp
@@ -151,7 +153,6 @@ target_compile_definitions(DriverNest
         _WIN32_IE=0x0A00
         NTDDI_VERSION=NTDDI_WIN10_NI   # 10.0.19041.0
         NOMINMAX
-        NODRAWTEXT
         WIN32_LEAN_AND_MEAN
         $<$<CONFIG:Release>:NDEBUG>
         $<$<CONFIG:Debug>:_DEBUG;DEBUG>
@@ -233,6 +234,7 @@ if(DN_BUILD_TESTS)
             tests/PackIndex.test.cpp
             tests/Hash.test.cpp
             tests/PathValidate.test.cpp
+            tests/InstallHistory.test.cpp
 
             # Code under test (non-UI translation units).
             src/app/Log.cpp
@@ -242,6 +244,7 @@ if(DN_BUILD_TESTS)
             src/packs/PackScanner.cpp
             src/packs/Ranker.cpp
             src/install/Verify.cpp
+            src/install/InstallHistory.cpp
             src/net/Hash.cpp
     )
 

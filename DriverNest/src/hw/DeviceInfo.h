@@ -14,6 +14,7 @@ enum class DriverState : std::int32_t {
     Outdated,         // Installed driver exists but a newer candidate is available.
     Problem,          // Device has a non-zero problem code (Device Manager code).
     Unsigned,         // Installed or candidate driver is not signed or lacks a catalog.
+    PendingRestart,   // Installed in session; reboot required to load and apply driver.
 };
 
 // ---------------------------------------------------------------------------

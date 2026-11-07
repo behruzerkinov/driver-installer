@@ -1,47 +1,67 @@
 #pragma once
 #include "DeviceInfo.h"
 #include <vector>
+#include <string>
 #include <windows.h>
 
 namespace DriverNest::Ui {
 
-// ---------------------------------------------------------------------------
-// Device list control wrapper.
-//
-// Uses SysListView32 in report mode with:
-//  - Groups by class (LVM_ENABLEGROUPVIEW)
-//  - Checkboxes (LVS_EX_CHECKBOXES)
-//  - Double buffer, full row select
-//  - Virtual mode (LVS_OWNERDATA) for > 2000 devices
-//  - Custom draw for status dot and row tint
-// ---------------------------------------------------------------------------
+enum class ItemInstallState {
+    Idle,
+    Queued,          // Waiting to install
+    Downloading,     // Downloading %
+    Installing,      // Installing via pnputil
+    Verifying,       // Verifying driver
+    Installed,       // Installed successfully
+    PendingRestart,  // Installed in session, restart required
+    Failed           // Error
+};
+
+struct ItemProgress {
+    ItemInstallState state = ItemInstallState::Idle;
+    int percent = 0;              // 0 - 100
+    int64_t bytesCurrent = 0;
+    int64_t bytesTotal = 0;
+    std::wstring message;
+};
+
 class DeviceList {
 public:
-    // Initialize an existing SysListView32 HWND.
     static void Init(HWND hwnd);
-
-    // Set the main window HWND (for keyboard hooks, settings, etc.).
     static void SetMainWindow(HWND hwndMain);
 
-    // Replace the full device list. Triggers a rebuild of groups and items.
+    // Replace the full device list
     static void SetDevices(HWND hwnd, std::vector<Hw::Device> devices);
 
-    // Select all visible items.
-    static void SelectAll(HWND hwnd);
+    // Skeleton loading state
+    static void SetScanning(HWND hwnd, bool scanning, float shimmerPhase = 0.0f);
+    static bool IsScanning(HWND hwnd);
 
-    // Clear selection.
+    // Selection methods
+    static void SelectAll(HWND hwnd);
+    static void DeselectAll(HWND hwnd);
+    static void ToggleSelectAll(HWND hwnd);
+    static bool AreAllSelected(HWND hwnd);
+    static int GetSelectedCount(HWND hwnd);
     static void ClearSelection(HWND hwnd);
 
-    // Return the list of selected instance IDs.
+    // Return the list of selected instance IDs
     static std::vector<std::wstring> GetSelectedInstanceIds(HWND hwnd);
 
-    // Retrieve the device at a given index (for details pane refresh).
+    // Retrieve the device at a given index
     static Hw::Device GetDeviceAt(HWND hwnd, int index);
+    static int GetDeviceCount(HWND hwnd);
 
-    // Handle NM_CUSTOMDRAW and other notifications from the list.
+    // Per-driver progress updates
+    static void SetItemProgress(HWND hwnd, int index, const ItemProgress& progress);
+    static void SetItemProgressByInstanceId(HWND hwnd, const std::wstring& instanceId, const ItemProgress& progress);
+    static void ResetProgress(HWND hwnd);
+
+    // Notification handling (custom draw, clicks, keyboard)
     static LRESULT HandleNotify(HWND hwnd, NMHDR* pnm);
 
+    // Mouse / hit test helpers for custom checkboxes
+    static bool HandleClick(HWND hwnd, int x, int y);
 };
-// Per-HWND state lives in GWLP_USERDATA and is owned by DeviceList.cpp.
 
 } // namespace DriverNest::Ui

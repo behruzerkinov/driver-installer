@@ -1,0 +1,58 @@
+# Changelog
+
+All notable changes to DriverNest are documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.2.0] - 2026-11-08
+
+### Added
+- **Automated GitHub Actions CI/CD Pipeline**:
+  - Continuous integration workflow in `.github/workflows/build-and-release.yml`.
+  - Automated building on Windows runners with MSBuild and CMake C++20.
+  - Automated execution of test suites (`DriverNestTests.exe`).
+  - Automated packaging of standalone release archives (`DriverNest-v1.2.0-windows-x64.zip`) with SHA-256 checksums.
+  - Automatic creation and publishing of GitHub Releases directly on push or tag.
+- **Design Intelligence & Skill Integration**:
+  - Integrated `nextlevelbuilder/ui-ux-pro-max`, `sickn33/scroll-experience`, and `frontend-design`.
+  - Global Gemini / Antigravity rule directives enforcing continuous UI/UX quality across all future development.
+- **Dynamic Version Synchronization**:
+  - Application title bar, custom header version pill, loggers, and telemetry panes dynamically reflect active semantic release versions.
+
+---
+
+## [1.1.0] - 2026-11-08
+
+### Added
+- **Aerospace Deep Chassis Design System**:
+  - Calibrated low-fatigue dark palette (`#0F1115` base, `#181B22` deck, `#212631` raised, `#2F3646` grid, `#2563EB` cobalt accent).
+  - High-clarity typography hierarchy using `Segoe UI Variable` paired with `Cascadia Code` telemetry font.
+- **Interactive Draggable Splitter**:
+  - Dynamic dual-pane divider with real-time cursor feedback (`IDC_SIZEWE`), hover grip pill, and smooth mouse tracking.
+- **Scanline Shimmer Skeletons**:
+  - Animated multi-row pulse skeletons during hardware and device tree scans.
+- **Mandatory "Select All" Controls**:
+  - Added "Select All" / "Deselect All" toolbar action (`ID_APP_SELECT_ALL`), bound to hotkey `Ctrl+A`.
+  - Live selection counter pill badge (`Install Selected (N)`).
+- **Granular Per-Device Install Lifecycle**:
+  - Real-time device state machine: `Waiting to Download`, `Downloading (XX% / X.X MB)`, `Installing`, `Verifying`, `Installed`, `Reboot Required`, and `Failed`.
+  - In-row micro progress bars and color-coded telemetry status signals.
+- **Session Install Journal & Smart Rescan**:
+  - Thread-safe `InstallHistory` journal tracks staged packages, driver versions, and reboot prerequisites across user sessions.
+  - Smart rescan recognition: drivers awaiting reboot are recognized as `PendingRestart`, preventing duplicate re-install offers.
+- **Hardware Inspector Deck**:
+  - 2-column comparative telemetry matrix (`Installed` vs `Staged candidate`).
+  - Clickable "Copy ID" button for fast hardware identifier clipboard capture.
+
+---
+
+## [1.0.0] - 2026-11-07
+
+### Added
+- Initial standalone release of DriverNest portable Windows driver installer.
+- High-speed device enumeration using native SetupAPI.
+- Driver staging and injection engine using pnputil and DISM.
+- System Restore point integration and automated rollback protection.
+- Portable, zero-dependency native Win32/C++20 architecture.

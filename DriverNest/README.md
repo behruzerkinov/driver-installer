@@ -1,13 +1,14 @@
-# DriverNest
+# DriverNest v1.2.0
 
 **Find it. Verify it. Install it.**
 
 DriverNest is a free, lightweight, portable Windows driver installer. It detects every device on your system, reports its installed driver state (OK, missing, outdated, problem code), finds better or missing drivers from a local driver library (packs) and from optional online sources, and installs selected drivers safely.
 
-- Single portable executable, no installer required.
-- Works fully offline once packs are present.
-- Native Win32 UI with Fluent-style controls, system accent color, dark and light themes, Mica backdrop on Windows 11.
-- Creates a System Restore point before installing, verifies signatures, and offers rollback.
+- Single portable executable, zero third-party runtime dependencies.
+- Automated CI/CD releases directly via GitHub Actions.
+- Aerospace Deep Chassis dark UI with dual-pane draggable splitter and shimmer skeletons.
+- Per-device download and installation progress reporting.
+- Automatic System Restore point creation before installing, signature verification, and transactional rollback.
 
 ## Requirements
 
