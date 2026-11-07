@@ -113,12 +113,14 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
         GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
     if (uMsg == WM_NCCREATE) {
-        // Get the 'this' pointer from CREATESTRUCT
+        // Get the 'this' pointer from CREATESTRUCT. Child windows are created
+        // later in WM_CREATE, so just continue creation here (TRUE).
         auto pcs = reinterpret_cast<LPCREATESTRUCT>(lParam);
         pThis = static_cast<MainWindow*>(pcs->lpCreateParams);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pThis));
+        if (!pThis) return FALSE;
         pThis->hwnd_ = hwnd;
-        return pThis->OnCreate(pcs) ? 0 : -1;
+        return TRUE;
     }
 
     if (!pThis) {
@@ -520,8 +522,12 @@ void MainWindow::DoLayout(int cx, int cy) {
     // Status bar
     SetWindowPos(hStatusBar_, nullptr, 0, cy - statusH, cx, statusH, SWP_NOZORDER);
 
-    // Update status bar pane count (simple: one pane)
-    SendMessageW(hStatusBar_, SB_SETPARTS, 1, MAKELPARAM(cx, 0));
+    // Update status bar pane count (simple: one pane spanning the width)
+    if (hStatusBar_) {
+        int partWidth = cx;
+        SendMessageW(hStatusBar_, SB_SETPARTS, 1,
+                     reinterpret_cast<LPARAM>(&partWidth));
+    }
 }
 
 void MainWindow::SaveGeometry() {
