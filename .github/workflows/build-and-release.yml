@@ -20,7 +20,7 @@ permissions:
 jobs:
   build-test-release:
     name: Build, Test & Release
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout Repository
@@ -46,8 +46,16 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Configure CMake
+        shell: pwsh
         run: |
-          cmake -B build -S DriverNest -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+          $help = cmake --help
+          if ($help -match 'Visual Studio 17 2022') {
+              Write-Host "Using generator: Visual Studio 17 2022"
+              cmake -B build -S DriverNest -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+          } else {
+              Write-Host "Using auto-detected Visual Studio generator"
+              cmake -B build -S DriverNest -A x64 -DCMAKE_BUILD_TYPE=Release
+          }
 
       - name: Build DriverNest Solution
         run: |
@@ -64,8 +72,15 @@ jobs:
           $distDir = "dist/DriverNest-$ver-windows-x64"
           New-Item -ItemType Directory -Force -Path $distDir | Out-Null
           
-          # Copy binaries and documents
-          Copy-Item -Path "build/bin/Release/DriverNest.exe" -Destination "$distDir\" -Force
+          # Dynamically locate DriverNest.exe
+          $exe = Get-ChildItem -Path "build" -Filter "DriverNest.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) {
+              throw "DriverNest.exe was not found in the build directory."
+          }
+          Write-Host "Found binary: $exe"
+          Copy-Item -Path $exe -Destination "$distDir\DriverNest.exe" -Force
+
+          # Copy docs and licenses
           if (Test-Path "DriverNest/LICENSE") { Copy-Item -Path "DriverNest/LICENSE" -Destination "$distDir\" -Force }
           if (Test-Path "DriverNest/README.md") { Copy-Item -Path "DriverNest/README.md" -Destination "$distDir\" -Force }
           if (Test-Path "CHANGELOG.md") { Copy-Item -Path "CHANGELOG.md" -Destination "$distDir\" -Force }
