@@ -6,6 +6,7 @@
 #include <commctrl.h>
 #include <algorithm>
 #include <cwchar>
+#include <cwctype>
 #include <vector>
 #include <string>
 
@@ -120,8 +121,8 @@ void DeviceList::SetDevices(HWND hwnd, std::vector<Hw::Device> devices) {
 
     // Pre-check outdated and missing devices by default
     for (size_t i = 0; i < s->devices.size(); ++i) {
-        if (s->devices[i].state == Hw::DriverState::Outdated ||
-            s->devices[i].state == Hw::DriverState::Missing) {
+        if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::PendingRestart) {
             s->checkedList[i] = true;
         }
     }
@@ -168,7 +169,8 @@ void DeviceList::SelectAll(HWND hwnd) {
     auto* s = GetState(hwnd);
     if (!s) return;
     for (size_t i = 0; i < s->checkedList.size(); ++i) {
-        if (s->devices[i].state != Hw::DriverState::PendingRestart) {
+        if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::PendingRestart) {
             s->checkedList[i] = true;
         }
     }
@@ -199,12 +201,15 @@ void DeviceList::ToggleSelectAll(HWND hwnd) {
 bool DeviceList::AreAllSelected(HWND hwnd) {
     auto* s = GetState(hwnd);
     if (!s || s->checkedList.empty()) return false;
+    bool hasCandidate = false;
     for (size_t i = 0; i < s->checkedList.size(); ++i) {
-        if (s->devices[i].state != Hw::DriverState::PendingRestart && !s->checkedList[i]) {
-            return false;
+        if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::PendingRestart) {
+            hasCandidate = true;
+            if (!s->checkedList[i]) return false;
         }
     }
-    return true;
+    return hasCandidate;
 }
 
 int DeviceList::GetSelectedCount(HWND hwnd) {
@@ -234,6 +239,43 @@ std::vector<std::wstring> DeviceList::GetSelectedInstanceIds(HWND hwnd) {
     return result;
 }
 
+std::vector<Hw::Device> DeviceList::GetSelectedDevices(HWND hwnd) {
+    std::vector<Hw::Device> result;
+    auto* s = GetState(hwnd);
+    if (!s) return result;
+    result.reserve(s->devices.size());
+    for (size_t i = 0; i < s->devices.size(); ++i) {
+        if (i < s->checkedList.size() && s->checkedList[i] &&
+            !s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::PendingRestart) {
+            result.push_back(s->devices[i]);
+        }
+    }
+    return result;
+}
+
+bool DeviceList::SelectOnlyForInstall(HWND hwnd, std::wstring_view instanceId) {
+    auto* s = GetState(hwnd);
+    if (!s) return false;
+    size_t target = s->devices.size();
+    for (size_t i = 0; i < s->devices.size(); ++i) {
+        if (s->devices[i].instanceId == instanceId &&
+            !s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::PendingRestart) {
+            target = i;
+            break;
+        }
+    }
+    if (target == s->devices.size()) return false;
+    std::fill(s->checkedList.begin(), s->checkedList.end(), false);
+    s->checkedList[target] = true;
+    InvalidateRect(hwnd, nullptr, FALSE);
+    if (s->hwndMain) {
+        ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, 1, 0);
+    }
+    return true;
+}
+
 Hw::Device DeviceList::GetDeviceAt(HWND hwnd, int index) {
     auto* s = GetState(hwnd);
     if (!s || index < 0 || index >= static_cast<int>(s->devices.size())) {
@@ -247,11 +289,50 @@ int DeviceList::GetDeviceCount(HWND hwnd) {
     return s ? static_cast<int>(s->devices.size()) : 0;
 }
 
+int DeviceList::FindMatchingDevice(HWND hwnd, std::wstring_view query) {
+    auto* s = GetState(hwnd);
+    if (!s || query.empty()) return -1;
+    std::wstring needle(query);
+    std::transform(needle.begin(), needle.end(), needle.begin(),
+                   [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+    auto contains = [&needle](std::wstring_view value) {
+        std::wstring folded(value);
+        std::transform(folded.begin(), folded.end(), folded.begin(),
+                       [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+        return folded.find(needle) != std::wstring::npos;
+    };
+    for (size_t i = 0; i < s->devices.size(); ++i) {
+        const auto& dev = s->devices[i];
+        if (contains(dev.description) || contains(dev.instanceId) || contains(dev.classGuid) ||
+            contains(dev.manufacturer)) return static_cast<int>(i);
+        for (const auto& id : dev.hardwareIds) {
+            if (contains(id)) return static_cast<int>(i);
+        }
+        for (const auto& id : dev.compatibleIds) {
+            if (contains(id)) return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 void DeviceList::SetItemProgress(HWND hwnd, int index, const ItemProgress& progress) {
     auto* s = GetState(hwnd);
     if (!s || index < 0 || index >= static_cast<int>(s->progressList.size())) return;
 
     s->progressList[static_cast<size_t>(index)] = progress;
+    if (progress.state == ItemInstallState::PendingRestart) {
+        auto& device = s->devices[static_cast<size_t>(index)];
+        device.state = Hw::DriverState::PendingRestart;
+        device.candidateInf.clear();
+        device.candidateVersion.clear();
+        device.candidateSigned = false;
+        if (static_cast<size_t>(index) < s->checkedList.size()) {
+            s->checkedList[static_cast<size_t>(index)] = false;
+        }
+        if (s->hwndMain) {
+            ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, GetSelectedCount(hwnd), 0);
+        }
+    }
     RECT rc;
     if (ListView_GetItemRect(hwnd, index, &rc, LVIR_BOUNDS)) {
         InvalidateRect(hwnd, &rc, FALSE);
@@ -292,7 +373,8 @@ bool DeviceList::HandleClick(HWND hwnd, int x, int /*y*/) {
         if (ListView_GetSubItemRect(hwnd, idx, COL_DEVICE, LVIR_BOUNDS, &rc)) {
             // Click hit area on checkbox: x in [rc.left + 4, rc.left + 32]
             if (x >= rc.left + 4 && x <= rc.left + 32) {
-                if (s->devices[static_cast<size_t>(idx)].state != Hw::DriverState::PendingRestart) {
+                if (!s->devices[static_cast<size_t>(idx)].candidateInf.empty() &&
+                    s->devices[static_cast<size_t>(idx)].state != Hw::DriverState::PendingRestart) {
                     s->checkedList[static_cast<size_t>(idx)] = !s->checkedList[static_cast<size_t>(idx)];
                     InvalidateRect(hwnd, &rc, FALSE);
                     if (s->hwndMain) {
@@ -524,9 +606,9 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                         textRc.left += 10;
                         textRc.right -= 10;
                         HGDIOBJ oldFont = SelectObject(hdc, t.fontMono);
-                        if (dev.state == Hw::DriverState::Outdated || dev.state == Hw::DriverState::Missing) {
+                        if (!dev.candidateInf.empty()) {
                             SetTextColor(hdc, t.palette.accent);
-                            DrawTextW(hdc, L"Match Available", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+                            DrawTextW(hdc, dev.candidateVersion.c_str(), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         } else {
                             SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
                             DrawTextW(hdc, L"—", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
@@ -541,7 +623,8 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                         textRc.right -= 10;
                         HGDIOBJ oldFont = SelectObject(hdc, t.fontSmall);
                         SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
-                        const wchar_t* txt = dev.installedInf.empty() ? L"Local Driver Pack" : L"Driver Store";
+                        const wchar_t* txt = !dev.candidateInf.empty() ? L"Local Pack" :
+                                             !dev.installedInf.empty() ? L"Driver Store" : L"Unknown";
                         DrawTextW(hdc, txt, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         SelectObject(hdc, oldFont);
                         return CDRF_SKIPDEFAULT;

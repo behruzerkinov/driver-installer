@@ -50,7 +50,6 @@ private:
     HWND hStatusBar_ = nullptr;
 
     // In-app progress panel
-    HWND hProgressPanel_ = nullptr;
     HWND hProgressText_ = nullptr;
     HWND hProgressBar_ = nullptr;
     HWND hProgressCancel_ = nullptr;
@@ -72,7 +71,7 @@ private:
     float shimmerPhase_ = 0.0f;
 
     std::atomic<bool> isInstalling_{false};
-    std::atomic<bool> cancelInstall_{false};
+    std::shared_ptr<std::atomic<bool>> cancelInstall_ = std::make_shared<std::atomic<bool>>(false);
 
     // Message handlers
     LRESULT OnCreate(LPCREATESTRUCT pcs);
@@ -105,6 +104,7 @@ private:
     void StartScan();
 
     void RunInstallPipeline();
+    void RefreshTheme();
     void PromptRescanDialog();
 
     static int LoWord(LPARAM l) { return static_cast<int>(l & 0xFFFF); }

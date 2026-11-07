@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.1] - 2026-11-08
+
+### Fixed
+- Restored saved theme preference on startup and kept custom control fonts valid across theme changes.
+- Replaced uninitialized alpha compositing and per-card DIB allocation with predictable solid GDI surfaces.
+- Removed scan startup delay, blocked overlapping scans, and moved install progress updates onto the UI thread.
+- Connected local pack indexing and signature-aware candidate ranking to the device list and install flow.
+- Added working Settings actions for pack folder, theme, and unsigned candidates.
+- Replaced the recursive, nonfunctional Undo action with accurate recovery guidance.
+- Corrected scan status messages so missing packages are not reported as an up-to-date system.
+
+### Changed
+- Matched the dark palette to Aerospace Deep Chassis tokens and cobalt accent.
+- Reworked driver candidate installation to use the selected INF and report actual failures.
+- Removed the inaccurate automatic restore-point claim from the install confirmation and release notes.
+- Updated release version to 1.3.1.
+
 ## [1.3.0] - 2026-11-08
 
 ### Added

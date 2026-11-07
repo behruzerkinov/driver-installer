@@ -87,6 +87,13 @@ void Ranker::Rank(const Hw::Device& device,
     for (size_t i = 0; i < index.records.size(); ++i) {
         const auto& rec = index.records[i];
 
+        // Reject non-matching packages before touching the filesystem or
+        // verifying catalog signatures. Signature verification is expensive.
+        ScoreBreakdown bd = ComputeScore(device, rec, index, Signature::Unknown);
+        if (bd.exactPrimary == 0 && bd.exactOther == 0 && bd.compatibleOnly == 0) {
+            continue;
+        }
+
         // Establish the signature state. A package whose INF is not on disk
         // cannot be judged, so it stays Unknown and is not penalised.
         Signature signature = Signature::Unknown;
@@ -109,7 +116,7 @@ void Ranker::Rank(const Hw::Device& device,
             continue;
         }
 
-        ScoreBreakdown bd = ComputeScore(device, rec, index, signature);
+        bd = ComputeScore(device, rec, index, signature);
 
         Candidate cand;
         cand.recordIndex = i;

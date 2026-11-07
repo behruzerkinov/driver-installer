@@ -1,13 +1,13 @@
-# DriverNest v1.3.0
+# DriverNest v1.3.1
 
 **Find it. Verify it. Install it.**
 
-DriverNest is a free, lightweight, portable Windows driver installer with a native **Unigram-inspired Windows Blurry Aero & Acrylic UI**. It detects every device on your system, reports its installed driver state (OK, missing, outdated, problem code), finds better or missing drivers from local driver packs and optional sources, and installs selected drivers safely.
+DriverNest is a free, portable Windows driver utility with an **Aerospace Deep Chassis** interface. It detects devices, ranks matching INF packages from a local driver pack, validates catalog signatures, and installs confirmed candidates.
 
 - Single portable executable, zero third-party runtime dependencies.
-- Hardware-accelerated Acrylic / Aero Glass blur backdrop via native Windows DWM.
-- Telegram/Unigram chat-style master device list with 58px card rows and vibrant squircle avatars.
-- Side-by-side comparative telemetry bento grid with WHQL validation.
+- High-contrast graphite surfaces, cobalt accent, deterministic native GDI rendering.
+- Local INF indexing, hardware ID candidate ranking, and catalog signature validation.
+- Separate confirmation for each unsigned driver candidate.
 - Automated CI/CD releases directly via GitHub Actions.
 
 ## Requirements
@@ -54,19 +54,19 @@ winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --quiet
 2. Set a driver pack folder in **Settings** (a folder containing `.inf` and `.cat` files).
 3. Click **Scan** to enumerate devices and find driver candidates.
 4. Select devices and click **Install selected** to install drivers.
-5. A restore point is created automatically before installation.
+5. Confirm each selected package after reviewing its version and signature status.
 
 ### Driver Packs
 
 A driver pack is a folder tree containing `.inf` files with matching `.cat` catalogs. Place your packs in a folder and set that folder as the pack root in Settings.
 
-### Online Sources (Opt-In)
+### Online Sources
 
-Online driver sources are off by default. Enable them in Settings and provide a manifest URL. DriverNest never ships a built-in driver server URL.
+Online catalog discovery is not available in this release. DriverNest only uses the local driver pack selected in Settings.
 
 ## What it does not do
 
-- Backup or restore arbitrary driver files (only undo via reinstall or System Restore).
+- Back up or restore arbitrary driver files. Use Device Manager or Windows System Restore for recovery.
 - Provide a GUI for editing INF files.
 - Support Windows 7 or 8.
 - Include a cloud account system.

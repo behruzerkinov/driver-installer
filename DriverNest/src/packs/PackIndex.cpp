@@ -9,6 +9,7 @@
 #include <mutex>
 #include <atomic>
 #include <system_error>
+#include <chrono>
 
 namespace DriverNest::Packs {
 
@@ -18,6 +19,14 @@ using App::LOG_INFO;
 using App::LOG_WARN;
 
 namespace {
+
+std::int64_t FileMtimeStamp(const std::filesystem::path& path) {
+    std::error_code ec;
+    const auto stamp = std::filesystem::last_write_time(path, ec);
+    if (ec) return 0;
+    return static_cast<std::int64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(stamp.time_since_epoch()).count());
+}
 
 // ---------------------------------------------------------------------------
 // Version packing: pack a version string "a.b.c.d" into uint64.
@@ -218,14 +227,7 @@ void PackIndex::Rebuild(const std::filesystem::path& packRoot) {
                 rec.version = PackVersion(entry.versionStr);
                 rec.dateEpoch = entry.dateEpoch;
                 // get file mtime
-                std::error_code ec;
-                auto ftime = std::filesystem::last_write_time(infPath, ec);
-                if (!ec) {
-                    // Convert to FILETIME (int64)
-                    // file_time_type is typically nanoseconds since 1601; we need to convert
-                    // For simplicity, we'll store 0 for now.
-                    rec.fileMtime = 0;
-                }
+                rec.fileMtime = FileMtimeStamp(infPath);
                 records.push_back(std::move(rec));
             }
         }
@@ -243,66 +245,32 @@ void PackIndex::Rebuild(const std::filesystem::path& packRoot) {
 void PackIndex::UpdateIncremental(const std::filesystem::path& packRoot) {
     rootPath = packRoot;
 
-    // Find all INF files currently in the pack
     auto currentInfos = PackScanner::FindInfFiles(packRoot);
-    std::unordered_map<std::string, std::filesystem::file_time_type> currentFiles;
+    std::unordered_map<std::string, std::vector<IndexRecord>> oldByInf;
+    oldByInf.reserve(records.size());
+    for (auto& rec : records) oldByInf[rec.infRelPath].push_back(std::move(rec));
 
-    for (auto& p : currentInfos) {
-        std::error_code ec;
-        auto rel = std::filesystem::relative(p, packRoot);
-        currentFiles[rel.u8string()] = std::filesystem::last_write_time(p, ec);
-    }
-
-    // For each existing record, check if its INF still exists and mtime matches
     std::vector<IndexRecord> newRecords;
     newRecords.reserve(records.size());
-
-    for (auto& rec : records) {
-        std::string fullRel = packRoot.u8string() + "/" + rec.infRelPath;
-        std::filesystem::path infPath = std::filesystem::u8path(fullRel);
-
-        if (!std::filesystem::exists(infPath)) {
-            // INF no longer present; skip
+    for (const auto& inf : currentInfos) {
+        const std::string rel = std::filesystem::relative(inf, packRoot).u8string();
+        const std::int64_t mtime = FileMtimeStamp(inf);
+        auto old = oldByInf.find(rel);
+        if (mtime != 0 && old != oldByInf.end() && !old->second.empty() &&
+            old->second.front().fileMtime == mtime) {
+            for (auto& rec : old->second) newRecords.push_back(std::move(rec));
             continue;
         }
 
-        // Check mtime
-        std::error_code ec;
-        auto mtime = std::filesystem::last_write_time(infPath, ec);
-        if (ec) {
-            // Can't check; keep record
-            newRecords.push_back(rec);
-            continue;
-        }
-
-        // If mtime changed, re-parse
-        // For now, just keep the record (full implementation would re-parse)
-        newRecords.push_back(rec);
-    }
-
-    // Add new INF files not in the index
-    for (auto& inf : currentInfos) {
-        std::string rel = std::filesystem::relative(inf, packRoot).u8string();
-        bool found = false;
-        for (auto& rec : newRecords) {
-            if (rec.infRelPath == rel) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            // Parse and add
-            auto entries = ParseInfFile(inf);
-            for (auto& entry : entries) {
-                for (auto& match : entry.hardwareMatches) {
-                    IndexRecord rec;
-                    rec.hardwareId = WideToUtf8(match.hardwareId);
-                    rec.infRelPath = rel;
-                    rec.version = PackVersion(entry.versionStr);
-                    rec.dateEpoch = entry.dateEpoch;
-                    rec.fileMtime = 0; // TODO: get actual mtime
-                    newRecords.push_back(std::move(rec));
-                }
+        for (auto& entry : ParseInfFile(inf)) {
+            for (auto& match : entry.hardwareMatches) {
+                IndexRecord rec;
+                rec.hardwareId = WideToUtf8(match.hardwareId);
+                rec.infRelPath = rel;
+                rec.version = PackVersion(entry.versionStr);
+                rec.dateEpoch = entry.dateEpoch;
+                rec.fileMtime = mtime;
+                newRecords.push_back(std::move(rec));
             }
         }
     }

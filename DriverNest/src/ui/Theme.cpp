@@ -10,7 +10,7 @@ namespace DriverNest::Ui {
 
 namespace {
 
-constexpr COLORREF kBrandAccent = RGB(0, 120, 212); // Modern Fluent Blue
+constexpr COLORREF kBrandAccent = RGB(37, 99, 235); // Aerospace cobalt (#2563EB)
 constexpr wchar_t kPersonalizePath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 
 bool ReadSystemAppsUseLightTheme() {
@@ -51,15 +51,15 @@ ThemePalette BuildPalette(bool dark, COLORREF accent) {
     p.accent = accent;
 
     if (dark) {
-        // Unigram Windows Blurry Aero Dark Palette
-        p.background        = RGB(18, 22, 30);        // Deep Chassis Tint (70% alpha over Acrylic)
-        p.surface           = RGB(26, 32, 44);        // Translucent Deck
-        p.surfaceRaised     = RGB(36, 44, 60);        // Raised Card Deck
-        p.surfaceHover      = RGB(46, 56, 76);        // Hover State
-        p.surfaceActive     = RGB(56, 68, 92);        // Active Pressed
-        p.text              = RGB(248, 250, 252);     // #F8FAFC Cool Pure White
-        p.textSecondary     = RGB(156, 170, 192);     // #9CAAC0 Muted Glass Secondary
-        p.textPlaceholder   = RGB(108, 122, 144);     // Placeholder
+        // Aerospace Deep Chassis palette
+        p.background        = RGB(15, 17, 21);        // #0F1115 chassis
+        p.surface           = RGB(24, 27, 34);        // #181B22 deck
+        p.surfaceRaised     = RGB(33, 38, 49);        // #212631 raised surface
+        p.surfaceHover      = RGB(43, 50, 64);
+        p.surfaceActive     = RGB(52, 62, 81);
+        p.text              = RGB(241, 245, 249);     // High-clarity cool white
+        p.textSecondary     = RGB(164, 176, 194);
+        p.textPlaceholder   = RGB(126, 140, 160);
         p.accentHover       = Theme::Blend(accent, RGB(255, 255, 255), 0.18f);
         p.accentPressed     = Theme::Blend(accent, RGB(0, 0, 0), 0.24f);
         p.accentLight       = Theme::Blend(p.surface, accent, 0.28f);
@@ -71,16 +71,16 @@ ThemePalette BuildPalette(bool dark, COLORREF accent) {
         p.errorBg           = RGB(60, 24, 24);        // Soft Fault Backing
         p.info              = RGB(56, 189, 248);      // #38BDF8 Telemetry Cyan
         p.infoBg            = RGB(18, 44, 64);        // Soft Cyan Backing
-        p.border            = RGB(48, 58, 78);        // Glass Border Line
+        p.border            = RGB(47, 54, 70);        // #2F3646 structural line
         p.borderFocus       = accent;
         p.selection         = Theme::Blend(p.surface, accent, 0.35f);
         p.selectionText     = RGB(255, 255, 255);
 
         // Glass Translucency Tokens
-        p.glassCard         = RGB(28, 34, 48);
-        p.glassCardHover    = RGB(40, 50, 70);
-        p.glassBorder       = RGB(75, 88, 115);
-        p.glassBorderSubtle = RGB(45, 54, 72);
+        p.glassCard         = p.surface;
+        p.glassCardHover    = p.surfaceHover;
+        p.glassBorder       = RGB(66, 78, 99);
+        p.glassBorderSubtle = p.border;
         p.glassHighlight    = RGB(255, 255, 255);
 
         // Squircle Category Vibrant Accents
@@ -173,11 +173,8 @@ void Theme::Refresh(HWND hwndForAccent) {
     bool systemDark = SystemIsDark();
     dark = ModeIsDark(mode, systemDark);
 
-    COLORREF accent = SystemAccentColor();
-    if (accent == 0) {
-        accent = kBrandAccent;
-    }
-    palette = BuildPalette(dark, accent);
+    // Keep the product's cobalt identity stable across Windows accent changes.
+    palette = BuildPalette(dark, kBrandAccent);
 
     // Unigram Fluid Typography: Segoe UI Variable Display & Text
     fontTitle    = CreateUiFont(14, FW_BOLD, false, L"Segoe UI Variable Display");
@@ -256,8 +253,10 @@ void Theme::SetDarkMode(HWND hwnd, bool isDark) {
 void ApplyThemeToWindow(HWND hwnd) {
     if (!hwnd) return;
     auto& theme = CurrentTheme();
-    Theme::SetDarkMode(hwnd, theme.dark);
-    Backdrop::SetBackdrop(hwnd, theme.dark);
+    if (GetAncestor(hwnd, GA_ROOT) == hwnd) {
+        Theme::SetDarkMode(hwnd, theme.dark);
+        Backdrop::SetBackdrop(hwnd, theme.dark);
+    }
     SetWindowTheme(hwnd, theme.dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
 }
 
@@ -265,78 +264,43 @@ void ApplyThemeToWindow(HWND hwnd) {
 // Unigram Aero Glass Primitives
 // ---------------------------------------------------------------------------
 
-void Theme::DrawGlassCard(HDC hdc, const RECT& rc, COLORREF bgCol, BYTE alpha, COLORREF borderCol, int radius, bool specular) {
+void Theme::DrawGlassCard(HDC hdc, const RECT& rc, COLORREF bgCol, BYTE /*alpha*/, COLORREF borderCol, int radius, bool specular) {
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
     if (w <= 0 || h <= 0) return;
-
-    // Fast 32-bit alpha blended surface
-    HDC memDC = CreateCompatibleDC(hdc);
-    BITMAPINFO bi{};
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = w;
-    bi.bmiHeader.biHeight = -h;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
-
-    void* bits = nullptr;
-    HBITMAP hBmp = CreateDIBSection(memDC, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (hBmp && bits) {
-        HGDIOBJ oldBmp = SelectObject(memDC, hBmp);
-
-        BYTE r = GetRValue(bgCol);
-        BYTE g = GetGValue(bgCol);
-        BYTE b = GetBValue(bgCol);
-        DWORD pr = (r * alpha) / 255;
-        DWORD pg = (g * alpha) / 255;
-        DWORD pb = (b * alpha) / 255;
-        DWORD pixel = (alpha << 24) | (pr << 16) | (pg << 8) | pb;
-
-        DWORD* pDwords = static_cast<DWORD*>(bits);
-        int total = w * h;
-        for (int i = 0; i < total; ++i) {
-            pDwords[i] = pixel;
-        }
-
-        BLENDFUNCTION bf{};
-        bf.BlendOp = AC_SRC_OVER;
-        bf.BlendFlags = 0;
-        bf.SourceConstantAlpha = 255;
-        bf.AlphaFormat = AC_SRC_ALPHA;
-
-        AlphaBlend(hdc, rc.left, rc.top, w, h, memDC, 0, 0, w, h, bf);
-
-        SelectObject(memDC, oldBmp);
-        DeleteObject(hBmp);
+    radius = std::clamp(radius, 0, 5);
+    // Opaque native GDI surfaces avoid blending against uninitialized memory
+    // DCs and remove a per-card DIB allocation from every repaint.
+    HBRUSH brush = CreateSolidBrush(bgCol);
+    HPEN pen = CreatePen(PS_SOLID, 1, borderCol ? borderCol : bgCol);
+    if (!brush || !pen) {
+        if (brush) DeleteObject(brush);
+        if (pen) DeleteObject(pen);
+        return;
     }
-    DeleteDC(memDC);
-
-    // Specular glass hairline border
-    if (borderCol != 0) {
-        HPEN pen = CreatePen(PS_SOLID, 1, borderCol);
-        HGDIOBJ oldPen = SelectObject(hdc, pen);
-        HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
-        RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius * 2, radius * 2);
-
-        if (specular && h > 10 && w > radius * 2) {
-            HPEN specPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
-            SelectObject(hdc, specPen);
+    HGDIOBJ oldBrush = SelectObject(hdc, brush);
+    HGDIOBJ oldPen = SelectObject(hdc, pen);
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius * 2, radius * 2);
+    if (specular && borderCol && h > 10 && w > radius * 2) {
+        HPEN highlight = CreatePen(PS_SOLID, 1, Theme::Blend(borderCol, RGB(255, 255, 255), 0.18f));
+        if (highlight) {
+            HGDIOBJ oldHighlight = SelectObject(hdc, highlight);
             MoveToEx(hdc, rc.left + radius + 2, rc.top + 1, nullptr);
             LineTo(hdc, rc.right - radius - 2, rc.top + 1);
-            DeleteObject(specPen);
+            SelectObject(hdc, oldHighlight);
+            DeleteObject(highlight);
         }
-
-        SelectObject(hdc, oldBrush);
-        SelectObject(hdc, oldPen);
-        DeleteObject(pen);
     }
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
 }
 
 void Theme::DrawSquircleAvatar(HDC hdc, const RECT& rc, std::wstring_view classGuid, COLORREF accentCol, int radius) {
     // Fill squircle with translucent accent tint
-    COLORREF bgCol = Theme::Blend(RGB(18, 22, 30), accentCol, 0.28f);
-    COLORREF borderCol = Theme::Blend(accentCol, RGB(255, 255, 255), 0.35f);
+    COLORREF bgCol = Theme::Blend(CurrentTheme().palette.surface, accentCol, 0.22f);
+    COLORREF borderCol = accentCol;
 
     DrawGlassCard(hdc, rc, bgCol, 220, borderCol, radius, true);
 

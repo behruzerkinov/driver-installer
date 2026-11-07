@@ -10,6 +10,8 @@
 #include "app/App.h"
 #include "app/Settings.h"
 #include "app/Log.h"
+#include "packs/PackIndex.h"
+#include "packs/Ranker.h"
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
@@ -25,6 +27,12 @@ namespace DriverNest::Ui {
 using App::LOG_ERROR;
 using App::LOG_INFO;
 using App::LOG_WARN;
+
+struct InstallItemUpdate {
+    std::wstring instanceId;
+    ItemProgress progress;
+    std::wstring taskText;
+};
 
 struct WndClass {
     WndClass() {
@@ -45,7 +53,7 @@ static WndClass g_wndClass;
 MainWindow::MainWindow() = default;
 
 MainWindow::~MainWindow() {
-    cancelInstall_ = true;
+    cancelInstall_->store(true);
     if (hwnd_) {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
@@ -53,6 +61,12 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::Create(const App::Settings& settings) {
+    // Load the persisted appearance before WM_CREATE paints the first frame.
+    auto& theme = CurrentTheme();
+    if (settings.theme == L"Light") theme.mode = ThemeMode::Light;
+    else if (settings.theme == L"Dark") theme.mode = ThemeMode::Dark;
+    else theme.mode = ThemeMode::System;
+
     int width = std::max(1020, settings.mainWidth);
     int height = std::max(680, settings.mainHeight);
 
@@ -145,6 +159,16 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
         }
 
         case WM_APP_BEGIN_INSTALL: {
+            if (wParam != 0 && pThis->hDeviceList_) {
+                const int focused = ListView_GetNextItem(pThis->hDeviceList_, -1, LVNI_SELECTED);
+                if (focused >= 0) {
+                    const auto device = DeviceList::GetDeviceAt(pThis->hDeviceList_, focused);
+                    if (DeviceList::SelectOnlyForInstall(pThis->hDeviceList_, device.instanceId)) {
+                        pThis->InstallSelectedRequested();
+                    }
+                }
+                return 0;
+            }
             pThis->RunInstallPipeline();
             return 0;
         }
@@ -157,7 +181,7 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
         case WM_APP_INSTALL_ALL_COMPLETE: {
             pThis->isInstalling_ = false;
             pThis->showProgressPanel_ = false;
-            pThis->EnableInstallButton(true);
+            pThis->UpdateInstallButtonCount(DeviceList::GetSelectedCount(pThis->hDeviceList_));
             EnableWindow(pThis->hScanBtn_, TRUE);
             EnableWindow(pThis->hSelectAllBtn_, TRUE);
 
@@ -166,7 +190,20 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
             pThis->DoLayout(r.right - r.left, r.bottom - r.top);
             InvalidateRect(hwnd, nullptr, TRUE);
 
-            pThis->PromptRescanDialog();
+            if (wParam == 0) pThis->PromptRescanDialog();
+            return 0;
+        }
+
+        case WM_APP_INSTALL_PROGRESS_UPDATE:
+            if (pThis->hProgressBar_) SendMessageW(pThis->hProgressBar_, PBM_SETPOS, wParam, 0);
+            return 0;
+
+        case WM_APP_INSTALL_ITEM_UPDATE: {
+            std::unique_ptr<InstallItemUpdate> update(reinterpret_cast<InstallItemUpdate*>(lParam));
+            if (update) {
+                DeviceList::SetItemProgressByInstanceId(pThis->hDeviceList_, update->instanceId, update->progress);
+                if (!update->taskText.empty()) SetWindowTextW(pThis->hProgressText_, update->taskText.c_str());
+            }
             return 0;
         }
 
@@ -174,6 +211,10 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
             pThis->StartScan();
             return 0;
         }
+
+        case WM_APP_REFRESH_THEME:
+            pThis->RefreshTheme();
+            return 0;
 
         case WM_APP_SCAN_COMPLETE: {
             auto* pDevs = reinterpret_cast<std::vector<Hw::Device>*>(wParam);
@@ -196,8 +237,7 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
 }
 
 LRESULT MainWindow::OnCreate(LPCREATESTRUCT /*pcs*/) {
-    CurrentTheme().Refresh(hwnd_);
-    ApplyThemeToWindow(hwnd_);
+    RefreshTheme();
 
     InitChildren();
 
@@ -220,9 +260,14 @@ LRESULT MainWindow::OnSize(UINT /*wParam*/, int cx, int cy) {
     return 0;
 }
 
-LRESULT MainWindow::OnDpiChanged(WPARAM /*wParam*/, LPARAM /*lParam*/) {
-    CurrentTheme().Refresh(hwnd_);
-    ApplyThemeToWindow(hwnd_);
+LRESULT MainWindow::OnDpiChanged(WPARAM /*wParam*/, LPARAM lParam) {
+    const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+    if (suggested) {
+        SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top,
+                     suggested->right - suggested->left, suggested->bottom - suggested->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    RefreshTheme();
     RECT r;
     GetClientRect(hwnd_, &r);
     DoLayout(r.right - r.left, r.bottom - r.top);
@@ -233,15 +278,30 @@ LRESULT MainWindow::OnDpiChanged(WPARAM /*wParam*/, LPARAM /*lParam*/) {
 LRESULT MainWindow::OnSettingChange(UINT /*uFlags*/, LPCTSTR lpszSection) {
     if (lpszSection && (wcscmp(lpszSection, L"ImmersiveColorSet") == 0 ||
                         wcscmp(lpszSection, L"Colors") == 0)) {
-        CurrentTheme().Refresh(hwnd_);
-        ApplyThemeToWindow(hwnd_);
-        InvalidateRect(hwnd_, nullptr, TRUE);
+        RefreshTheme();
     }
     return 0;
 }
 
-LRESULT MainWindow::OnCommand(WORD /*wNotifyCode*/, WORD wID, HWND /*hwndCtl*/) {
+LRESULT MainWindow::OnCommand(WORD wNotifyCode, WORD wID, HWND /*hwndCtl*/) {
     switch (wID) {
+        case IDC_SEARCH:
+            if (wNotifyCode == EN_CHANGE && hSearchEdit_ && hDeviceList_) {
+                const int length = GetWindowTextLengthW(hSearchEdit_);
+                std::wstring query(static_cast<size_t>(std::max(length, 0)) + 1, L'\0');
+                const int copied = GetWindowTextW(hSearchEdit_, query.data(), static_cast<int>(query.size()));
+                query.resize(static_cast<size_t>(std::max(copied, 0)));
+                const int match = DeviceList::FindMatchingDevice(hDeviceList_, query);
+                if (match >= 0) {
+                    ListView_SetItemState(hDeviceList_, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+                    ListView_SetItemState(hDeviceList_, match, LVIS_SELECTED | LVIS_FOCUSED,
+                                          LVIS_SELECTED | LVIS_FOCUSED);
+                    ListView_EnsureVisible(hDeviceList_, match, FALSE);
+                    DetailsPane::RefreshFromSelection(hDeviceList_, hDetailsPane_, hwnd_);
+                }
+            }
+            return 0;
+
         case ID_APP_SCAN:
             StartScan();
             return 0;
@@ -276,7 +336,7 @@ LRESULT MainWindow::OnCommand(WORD /*wNotifyCode*/, WORD wID, HWND /*hwndCtl*/) 
             return 0;
 
         case IDC_PROGRESS_CANCEL:
-            cancelInstall_ = true;
+            cancelInstall_->store(true);
             return 0;
 
         default:
@@ -427,7 +487,7 @@ LRESULT MainWindow::OnPaint() {
     SelectObject(memDC, t.fontSmall);
     SetTextColor(memDC, t.palette.textSecondary);
     RECT subRc = { iconX + iconSize + 12, 30, iconX + iconSize + 320, 48 };
-    DrawTextW(memDC, L"Aero Telemetry & Native Windows Driver Deployment", -1, &subRc, DT_SINGLELINE | DT_NOPREFIX);
+    DrawTextW(memDC, L"Hardware inventory and driver deployment", -1, &subRc, DT_SINGLELINE | DT_NOPREFIX);
 
     // 3. Toolbar Command Deck (headerHeight_ to headerHeight_ + toolbarHeight_)
     int toolbarTop = headerHeight_;
@@ -438,6 +498,13 @@ LRESULT MainWindow::OnPaint() {
     SelectObject(memDC, borderPen);
     MoveToEx(memDC, 0, toolbarTop + toolbarHeight_ - 1, nullptr);
     LineTo(memDC, cx, toolbarTop + toolbarHeight_ - 1);
+
+    if (showProgressPanel_) {
+        const int progressTop = cy - statusHeight_ - progressHeight_;
+        RECT progressRc = { 0, progressTop, cx, cy - statusHeight_ };
+        Theme::DrawGlassCard(memDC, progressRc, t.palette.surfaceRaised, 255,
+                             t.palette.border, 0, false);
+    }
 
     // 4. Splitter Bar Grip
     int bodyTop = toolbarTop + toolbarHeight_;
@@ -645,37 +712,29 @@ void MainWindow::InitChildren() {
 
     hDetailsPane_ = DetailsPane::Create(hwnd_, 0, 0, 350, 300, hwnd_);
 
-    // 4. Progress Banner Strip (Above status bar)
-    hProgressPanel_ = CreateWindowExW(
-        0, L"STATIC", nullptr,
-        WS_CHILD | WS_CLIPSIBLINGS,
-        0, 0, 500, progressHeight_,
-        hwnd_, reinterpret_cast<HMENU>(IDC_PROGRESS_PANEL),
-        GetModuleHandleW(nullptr), nullptr
-    );
-
+    // 4. Progress Banner Strip (painted by the parent for consistent theming)
     hProgressText_ = CreateWindowExW(
         0, L"STATIC", L"Installing drivers...",
-        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+        WS_CHILD | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
         14, 8, 300, 22,
-        hProgressPanel_, reinterpret_cast<HMENU>(IDC_PROGRESS_TEXT),
+        hwnd_, reinterpret_cast<HMENU>(IDC_PROGRESS_TEXT),
         GetModuleHandleW(nullptr), nullptr
     );
     SendMessageW(hProgressText_, WM_SETFONT, reinterpret_cast<WPARAM>(CurrentTheme().fontBold), 0);
 
     hProgressBar_ = CreateWindowExW(
         0, PROGRESS_CLASSW, nullptr,
-        WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+        WS_CHILD | PBS_SMOOTH,
         320, 10, 300, 18,
-        hProgressPanel_, reinterpret_cast<HMENU>(IDC_PROGRESS_BAR),
+        hwnd_, reinterpret_cast<HMENU>(IDC_PROGRESS_BAR),
         GetModuleHandleW(nullptr), nullptr
     );
 
     hProgressCancel_ = CreateWindowExW(
         0, L"BUTTON", L"Cancel",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
         630, 8, 80, 22,
-        hProgressPanel_, reinterpret_cast<HMENU>(IDC_PROGRESS_CANCEL),
+        hwnd_, reinterpret_cast<HMENU>(IDC_PROGRESS_CANCEL),
         GetModuleHandleW(nullptr), nullptr
     );
 
@@ -752,13 +811,17 @@ void MainWindow::DoLayout(int cx, int cy) {
     // Progress Banner
     if (showProgressPanel_) {
         int panelY = cy - statusHeight_ - progressHeight_;
-        SetWindowPos(hProgressPanel_, nullptr, 0, panelY, cx, progressHeight_, SWP_SHOWWINDOW);
-
         int progW = std::clamp(cx - 440, 150, 400);
-        SetWindowPos(hProgressBar_, nullptr, 320, 10, progW, 18, SWP_NOZORDER);
-        SetWindowPos(hProgressCancel_, nullptr, 320 + progW + 12, 8, 80, 22, SWP_NOZORDER);
+        SetWindowPos(hProgressText_, nullptr, 14, panelY + 8, 300, 22,
+                     SWP_NOZORDER | SWP_SHOWWINDOW);
+        SetWindowPos(hProgressBar_, nullptr, 320, panelY + 10, progW, 18,
+                     SWP_NOZORDER | SWP_SHOWWINDOW);
+        SetWindowPos(hProgressCancel_, nullptr, 320 + progW + 12, panelY + 8, 80, 22,
+                     SWP_NOZORDER | SWP_SHOWWINDOW);
     } else {
-        ShowWindow(hProgressPanel_, SW_HIDE);
+        ShowWindow(hProgressText_, SW_HIDE);
+        ShowWindow(hProgressBar_, SW_HIDE);
+        ShowWindow(hProgressCancel_, SW_HIDE);
     }
 
     // Status Bar
@@ -861,10 +924,21 @@ void MainWindow::ToggleTheme() {
 
     app.settings.theme = mode;
     App::SaveSettings(app.settings);
-    CurrentTheme().Refresh(hwnd_);
-    ApplyThemeToWindow(hwnd_);
-    InvalidateRect(hwnd_, nullptr, TRUE);
-    InvalidateRect(hDetailsPane_, nullptr, TRUE);
+    CurrentTheme().mode = mode == L"Dark" ? ThemeMode::Dark :
+                          mode == L"Light" ? ThemeMode::Light : ThemeMode::System;
+    RefreshTheme();
+}
+
+void MainWindow::RefreshTheme() {
+    auto& theme = CurrentTheme();
+    theme.Refresh(hwnd_);
+    if (hSearchEdit_) SendMessageW(hSearchEdit_, WM_SETFONT, reinterpret_cast<WPARAM>(theme.fontRegular), TRUE);
+    if (hProgressText_) SendMessageW(hProgressText_, WM_SETFONT, reinterpret_cast<WPARAM>(theme.fontBold), TRUE);
+    if (hDeviceList_) ApplyThemeToWindow(hDeviceList_);
+    if (hStatusBar_) ApplyThemeToWindow(hStatusBar_);
+    if (hProgressBar_) ApplyThemeToWindow(hProgressBar_);
+    if (hProgressCancel_) ApplyThemeToWindow(hProgressCancel_);
+    if (hwnd_) RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 void MainWindow::OpenSettings() {
@@ -879,14 +953,18 @@ void MainWindow::InstallSelectedRequested() {
     if (!hDeviceList_) return;
 
     std::vector<std::pair<std::wstring, std::wstring>> drivers;
-    const auto ids = DeviceList::GetSelectedInstanceIds(hDeviceList_);
-    for (const auto& id : ids) {
-        auto device = Hw::DeviceEnum::RefreshOne(id);
-        if (!device.instanceId.empty()) {
-            drivers.emplace_back(device.description,
-                                 device.installedVersion.empty() ? std::wstring(L"New Package")
-                                                                 : device.installedVersion);
+    const auto selected = DeviceList::GetSelectedDevices(hDeviceList_);
+    for (const auto& device : selected) {
+        if (!device.candidateSigned) {
+            const std::wstring prompt = L"The candidate for " + device.description +
+                L" has no verified catalog signature. Install this package anyway?";
+            if (MessageBoxW(hwnd_, prompt.c_str(), L"Unsigned driver confirmation",
+                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND) != IDYES) {
+                continue;
+            }
         }
+        drivers.emplace_back(device.description,
+                             L"v" + device.candidateVersion + (device.candidateSigned ? L" (signed)" : L" (unsigned)"));
     }
     if (drivers.empty()) return;
 
@@ -898,56 +976,108 @@ void MainWindow::UndoRequested() {
 }
 
 void MainWindow::StartScan() {
+    if (isScanning_ || isInstalling_) return;
     SetScanning(true);
     SetStatusText(Strings::StatusScanning);
 
-    std::thread([this]() {
-        // Shimmer holding effect while scanning hardware
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
+    const auto settings = App::RunningApp().settings;
+    const HWND target = hwnd_;
+    std::thread([target, settings]() {
         std::vector<Hw::Device> devices;
+        bool scanFailed = false;
         try {
             devices = Hw::DeviceEnum::EnumerateAll();
+            if (!settings.packRoot.empty()) {
+                DriverNest::Packs::PackIndex index;
+                const auto indexPath = settings.packRoot / L"index.dnidx";
+                const bool indexLoaded = index.Load(indexPath) && index.rootPath == settings.packRoot;
+                if (!indexLoaded) {
+                    index.Rebuild(settings.packRoot);
+                } else {
+                    index.UpdateIncremental(settings.packRoot);
+                }
+                index.Save(indexPath);
+                for (auto& dev : devices) {
+                    std::vector<DriverNest::Packs::Ranker::Candidate> top;
+                    std::vector<DriverNest::Packs::Ranker::Candidate> alternatives;
+                    DriverNest::Packs::Ranker::Rank(dev, index, settings.showUnsigned, top, alternatives);
+                    if (top.empty()) continue;
+                    const auto& record = index.records[top.front().recordIndex];
+                    dev.candidateInf = (index.rootPath / std::filesystem::u8path(record.infRelPath)).wstring();
+                    dev.candidateVersion = DriverNest::Packs::PackIndex::UnpackVersion(record.version);
+                    dev.candidateSigned = top.front().signedOK;
+                    if (dev.installedVersion.empty() ||
+                        CompareVersion(dev.candidateVersion, dev.installedVersion) > 0) {
+                        if (dev.state != Hw::DriverState::PendingRestart) {
+                            dev.state = dev.installedVersion.empty() ? Hw::DriverState::Missing
+                                                                    : Hw::DriverState::Outdated;
+                        }
+                    } else {
+                        dev.candidateInf.clear();
+                        dev.candidateVersion.clear();
+                        dev.candidateSigned = false;
+                    }
+                }
+            }
         } catch (...) {
-            // Keep empty
+            scanFailed = true;
         }
 
         // Check if any devices were installed in this session and are waiting restart
         int pendingRestartCount = 0;
         int needInstallCount = 0;
+        int unmatchedCount = 0;
 
         for (auto& dev : devices) {
             if (Install::InstallHistory::IsWaitingRestart(dev.instanceId, dev.hardwareIds)) {
                 dev.state = Hw::DriverState::PendingRestart;
+                dev.candidateInf.clear();
+                dev.candidateVersion.clear();
+                dev.candidateSigned = false;
                 ++pendingRestartCount;
-            } else if (dev.state == Hw::DriverState::Outdated || dev.state == Hw::DriverState::Missing) {
+            } else if (!dev.candidateInf.empty()) {
                 ++needInstallCount;
+            } else if (dev.state == Hw::DriverState::Outdated || dev.state == Hw::DriverState::Missing) {
+                ++unmatchedCount;
             }
         }
 
         // Return to UI thread
         auto pDevs = new std::vector<Hw::Device>(std::move(devices));
         std::wstring statusMsg;
-        if (needInstallCount == 0 && pendingRestartCount > 0) {
+        if (scanFailed) {
+            statusMsg = Strings::ErrScanFailed;
+        } else if (settings.packRoot.empty()) {
+            statusMsg = L"Scan complete. Choose a driver pack folder in Settings to find matching drivers.";
+        } else if (needInstallCount == 0 && unmatchedCount > 0) {
+            statusMsg = L"No matching package found for " + std::to_wstring(unmatchedCount) +
+                        L" device(s). Check the selected pack folder.";
+        } else if (needInstallCount == 0 && pendingRestartCount > 0) {
             statusMsg = L"Rescan Complete: " + std::to_wstring(pendingRestartCount) +
                         L" driver(s) waiting for restart. System up to date.";
         } else if (needInstallCount > 0) {
             statusMsg = L"Rescan Complete: " + std::to_wstring(needInstallCount) +
                         L" update(s) available; " + std::to_wstring(pendingRestartCount) +
                         L" waiting for restart.";
-        } else {
+        } else if (needInstallCount == 0 && unmatchedCount == 0) {
             statusMsg = L"Ready. All system devices up to date.";
+        } else {
+            statusMsg = L"Scan complete.";
         }
 
-        PostMessageW(hwnd_, WM_APP_SCAN_COMPLETE, reinterpret_cast<WPARAM>(pDevs),
-                     reinterpret_cast<LPARAM>(new std::wstring(std::move(statusMsg))));
+        auto* pStatus = new std::wstring(std::move(statusMsg));
+        if (!PostMessageW(target, WM_APP_SCAN_COMPLETE, reinterpret_cast<WPARAM>(pDevs),
+                          reinterpret_cast<LPARAM>(pStatus))) {
+            delete pDevs;
+            delete pStatus;
+        }
     }).detach();
 }
 
 void MainWindow::RunInstallPipeline() {
     if (isInstalling_) return;
     isInstalling_ = true;
-    cancelInstall_ = false;
+    cancelInstall_->store(false);
 
     EnableInstallButton(false);
     EnableWindow(hScanBtn_, FALSE);
@@ -962,104 +1092,90 @@ void MainWindow::RunInstallPipeline() {
     SendMessageW(hProgressBar_, PBM_SETPOS, 0, 0);
 
     // Get selected device instance IDs
-    auto selectedIds = DeviceList::GetSelectedInstanceIds(hDeviceList_);
-    if (selectedIds.empty()) {
+    auto selectedDevices = DeviceList::GetSelectedDevices(hDeviceList_);
+    if (selectedDevices.empty()) {
         isInstalling_ = false;
         showProgressPanel_ = false;
         DoLayout(r.right - r.left, r.bottom - r.top);
+        UpdateInstallButtonCount(DeviceList::GetSelectedCount(hDeviceList_));
+        SetStatusText(L"Select at least one verified driver candidate.");
         return;
     }
 
     // Set all selected devices to Queued
-    for (const auto& id : selectedIds) {
+    for (const auto& device : selectedDevices) {
         ItemProgress prog{};
         prog.state = ItemInstallState::Queued;
         prog.message = Strings::StateQueued;
-        DeviceList::SetItemProgressByInstanceId(hDeviceList_, id, prog);
+        DeviceList::SetItemProgressByInstanceId(hDeviceList_, device.instanceId, prog);
     }
 
-    std::thread([this, selectedIds]() {
-        const int total = static_cast<int>(selectedIds.size());
+    const HWND target = hwnd_;
+    auto cancellation = cancelInstall_;
+    std::thread([target, cancellation, selectedDevices = std::move(selectedDevices)]() {
+        auto postItem = [target](const std::wstring& id, const ItemProgress& progress,
+                                 const std::wstring& taskText = {}) {
+            auto* update = new InstallItemUpdate{id, progress, taskText};
+            if (!PostMessageW(target, WM_APP_INSTALL_ITEM_UPDATE, 0,
+                              reinterpret_cast<LPARAM>(update))) delete update;
+        };
+        const int total = static_cast<int>(selectedDevices.size());
 
         for (int i = 0; i < total; ++i) {
-            if (cancelInstall_) break;
+            if (cancellation->load()) break;
 
-            const auto& instanceId = selectedIds[static_cast<size_t>(i)];
-            auto dev = Hw::DeviceEnum::RefreshOne(instanceId);
+            const auto& dev = selectedDevices[static_cast<size_t>(i)];
+            const auto& instanceId = dev.instanceId;
             std::wstring devName = dev.description.empty() ? instanceId : dev.description;
-
-            // 1. Downloading phase
-            SetWindowTextW(hProgressText_, (L"Downloading (" + std::to_wstring(i + 1) + L"/" +
-                                           std::to_wstring(total) + L"): " + devName).c_str());
-
-            for (int pct = 10; pct <= 100; pct += 30) {
-                if (cancelInstall_) break;
-                ItemProgress dlProg{};
-                dlProg.state = ItemInstallState::Downloading;
-                dlProg.percent = pct;
-                dlProg.bytesCurrent = pct * 240000;
-                dlProg.bytesTotal = 24000000;
-                DeviceList::SetItemProgressByInstanceId(hDeviceList_, instanceId, dlProg);
-
-                int overallPct = ((i * 100) + (pct / 3)) / total;
-                SendMessageW(hProgressBar_, PBM_SETPOS, overallPct, 0);
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(120));
-            }
-
-            if (cancelInstall_) break;
-
-            // 2. Installing phase
-            SetWindowTextW(hProgressText_, (L"Installing: " + devName).c_str());
             ItemProgress instProg{};
             instProg.state = ItemInstallState::Installing;
             instProg.message = Strings::StateInstalling;
-            DeviceList::SetItemProgressByInstanceId(hDeviceList_, instanceId, instProg);
+            postItem(instanceId, instProg, L"Installing " + std::to_wstring(i + 1) + L" of " +
+                     std::to_wstring(total) + L": " + devName);
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(400));
-
-            // Execute install via Installer
-            bool installSuccess = true;
+            // Install only a ranked package from the configured pack. Never
+            // substitute a fake package or report a failed install as success.
             std::wstring publishedName;
+            std::wstring installError;
+            bool installSuccess = false;
             try {
-                if (!dev.installedInf.empty()) {
-                    publishedName = Install::Installer::InstallInf(dev.installedInf, false);
+                if (dev.candidateInf.empty()) {
+                    throw std::runtime_error("No verified driver candidate is available.");
                 }
+                publishedName = Install::Installer::InstallInf(dev.candidateInf, false);
+                installSuccess = true;
+            } catch (const std::exception& ex) {
+                installError = L"Windows rejected the package. Check the log for details.";
+                App::LOG_ERROR(L"Driver install failed for " + devName + L": " +
+                               std::wstring(ex.what(), ex.what() + std::strlen(ex.what())));
             } catch (...) {
-                // If INF not present locally on testing system, simulate successful driver store registration
-                publishedName = L"oem" + std::to_wstring(42 + i) + L".inf";
+                installError = L"Unexpected installer error.";
             }
 
-            // 3. Verifying phase
-            ItemProgress verProg{};
-            verProg.state = ItemInstallState::Verifying;
-            verProg.message = Strings::StateVerifying;
-            DeviceList::SetItemProgressByInstanceId(hDeviceList_, instanceId, verProg);
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
-            // Record into Session History
-            Install::SessionRecord rec{};
-            rec.instanceId = dev.instanceId;
-            rec.description = dev.description;
-            rec.hardwareIds = dev.hardwareIds;
-            rec.publishedInf = publishedName;
-            rec.targetVersion = dev.installedVersion;
-            rec.restartRequired = true;
-            rec.installTime = std::chrono::system_clock::now();
-            Install::InstallHistory::RecordInstall(rec);
-
-            // 4. Mark item as Pending Restart
-            ItemProgress doneProg{};
-            doneProg.state = ItemInstallState::PendingRestart;
-            doneProg.message = Strings::StatePendingRestart;
-            DeviceList::SetItemProgressByInstanceId(hDeviceList_, instanceId, doneProg);
-
-            int overallPct = ((i + 1) * 100) / total;
-            SendMessageW(hProgressBar_, PBM_SETPOS, overallPct, 0);
+            ItemProgress finalProgress{};
+            if (installSuccess) {
+                Install::SessionRecord rec{};
+                rec.instanceId = dev.instanceId;
+                rec.description = dev.description;
+                rec.hardwareIds = dev.hardwareIds;
+                rec.publishedInf = publishedName;
+                rec.targetVersion = dev.candidateVersion;
+                rec.restartRequired = true;
+                rec.installTime = std::chrono::system_clock::now();
+                Install::InstallHistory::RecordInstall(rec);
+                finalProgress.state = ItemInstallState::PendingRestart;
+                finalProgress.message = Strings::StatePendingRestart;
+            } else {
+                finalProgress.state = ItemInstallState::Failed;
+                finalProgress.message = L"Install failed: " + installError;
+            }
+            postItem(instanceId, finalProgress, installSuccess ? L"Install complete: " + devName
+                                                                : L"Install failed: " + devName);
+            if (PostMessageW(target, WM_APP_INSTALL_PROGRESS_UPDATE,
+                             static_cast<WPARAM>(((i + 1) * 100) / total), 0) == FALSE) break;
         }
 
-        PostMessageW(hwnd_, WM_APP_INSTALL_ALL_COMPLETE, 0, 0);
+        PostMessageW(target, WM_APP_INSTALL_ALL_COMPLETE, cancellation->load() ? 1 : 0, 0);
     }).detach();
 }
 

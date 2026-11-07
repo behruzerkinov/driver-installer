@@ -28,6 +28,9 @@ struct Device {
     std::vector<std::wstring> hardwareIds;    // most specific first
     std::vector<std::wstring> compatibleIds;
     std::wstring installedInf;        // path to the INF currently applied, may be empty
+    std::wstring candidateInf;        // selected INF path from the configured driver pack
+    std::wstring candidateVersion;    // version of the best matching pack candidate
+    bool candidateSigned = false;     // catalog signature validated during ranking
     std::wstring installedVersion;    // e.g. "10.0.22621.1" or empty
     FILETIME     installedDate{};     // from DriverDate registry value
     std::uint32_t problemCode = 0;     // CFGMGR problem code, 0 = no problem

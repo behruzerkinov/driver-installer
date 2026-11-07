@@ -127,7 +127,8 @@ void DetailsPane::SetDevice(HWND hwnd, const Hw::Device& device) {
     s->currentDevice = device;
     s->hasDevice = !device.instanceId.empty();
     ShowWindow(s->hCopyBtn, s->hasDevice ? SW_SHOW : SW_HIDE);
-    ShowWindow(s->hInstallBtn, (s->hasDevice && s->currentDevice.state != Hw::DriverState::PendingRestart) ? SW_SHOW : SW_HIDE);
+    ShowWindow(s->hInstallBtn, (s->hasDevice && !s->currentDevice.candidateInf.empty() &&
+                                s->currentDevice.state != Hw::DriverState::PendingRestart) ? SW_SHOW : SW_HIDE);
     InvalidateRect(hwnd, nullptr, FALSE);
 }
 
@@ -157,7 +158,7 @@ void DetailsPane::RefreshFromSelection(HWND hwndList, HWND hwndDetails, HWND /*h
     }
     Hw::Device dev = DeviceList::GetDeviceAt(hwndList, sel);
     SetDevice(hwndDetails, dev);
-    SetCandidate(hwndDetails, dev, L"", L"", L"", 0, {});
+    SetCandidate(hwndDetails, dev, dev.candidateInf, dev.candidateVersion, L"", 0, {});
 }
 
 LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -169,7 +170,7 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
             if (id == IDC_BTN_COPY_ID && s && s->hasDevice) {
                 CopyToClipboard(s->currentDevice.instanceId);
             } else if (id == IDC_BTN_INSTALL_ONE && s && s->hasDevice && s->hwndMain) {
-                ::PostMessageW(s->hwndMain, WM_APP_BEGIN_INSTALL, 0, 0);
+                ::PostMessageW(s->hwndMain, WM_APP_BEGIN_INSTALL, 1, 0);
             }
             return 0;
         }
@@ -354,13 +355,15 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                 SetTextColor(memDC, (dev.state == Hw::DriverState::Outdated) ? t.palette.accent : t.palette.text);
                 RECT c2Ver = { c2Rc.left + 10, c2Rc.top + 26, c2Rc.right - 10, c2Rc.top + 46 };
                 std::wstring v2 = isWaitingRestart ? L"Installed this session" :
-                                 (dev.state == Hw::DriverState::Outdated ? L"Ready to update" : L"Package verified");
+                                 (dev.candidateVersion.empty() ? L"No verified candidate" : L"v" + dev.candidateVersion);
                 DrawTextW(memDC, v2.c_str(), -1, &c2Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontSmall);
                 SetTextColor(memDC, t.palette.textSecondary);
                 RECT c2Signer = { c2Rc.left + 10, c2Rc.top + 46, c2Rc.right - 10, c2Rc.bottom - 4 };
-                DrawTextW(memDC, L"Signature: Verified WHQL", -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                const wchar_t* signatureText = dev.candidateInf.empty() ? L"Catalog: none" :
+                                               dev.candidateSigned ? L"Catalog: verified" : L"Catalog: unsigned";
+                DrawTextW(memDC, signatureText, -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
                 y += 128;
 

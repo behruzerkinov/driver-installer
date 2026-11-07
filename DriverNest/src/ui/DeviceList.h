@@ -47,10 +47,13 @@ public:
 
     // Return the list of selected instance IDs
     static std::vector<std::wstring> GetSelectedInstanceIds(HWND hwnd);
+    static std::vector<Hw::Device> GetSelectedDevices(HWND hwnd);
+    static bool SelectOnlyForInstall(HWND hwnd, std::wstring_view instanceId);
 
     // Retrieve the device at a given index
     static Hw::Device GetDeviceAt(HWND hwnd, int index);
     static int GetDeviceCount(HWND hwnd);
+    static int FindMatchingDevice(HWND hwnd, std::wstring_view query);
 
     // Per-driver progress updates
     static void SetItemProgress(HWND hwnd, int index, const ItemProgress& progress);

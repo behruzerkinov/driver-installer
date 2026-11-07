@@ -1,4 +1,4 @@
-# DriverNest v1.3.0
+# DriverNest v1.3.1
 
 [![Build and Release](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml)
 [![Latest Release](https://img.shields.io/github/v/release/behruzerkinov/driver-installer?color=blue&label=release)](https://github.com/behruzerkinov/driver-installer/releases)
@@ -12,34 +12,33 @@
 
 ## Overview
 
-**DriverNest** is a native Win32/C++20 utility engineered for hardware discovery, driver catalog matching, signature verification, and transactional installation. Redesigned with an authentic **Unigram Windows Blurry Aero & Acrylic UI**, DriverNest combines hardware-accelerated DWM glass blur with translucent cards, rich squircle category avatars, real-time hardware telemetry, per-device download and installation lifecycles, and rollback protection without third-party frameworks or runtime bloat.
+**DriverNest** is a native Win32/C++20 utility for hardware discovery and matching verified driver packages from a local driver pack. Its Aerospace Deep Chassis interface uses a high-contrast graphite palette, stable cobalt accent, compact device telemetry, and native GDI surfaces. The portable build has no third-party runtime dependencies.
 
 ---
 
 ## Key Features
 
-* **Unigram-Inspired Windows Blurry Aero & Acrylic UI**:
-  * Hardware-accelerated Acrylic / Aero Glass blur backdrop via DWM (`DWMWA_SYSTEMBACKDROP_TYPE = 3` on Windows 11 and `SetWindowCompositionAttribute` on Windows 10).
-  * Full-bleed borderless glass extension (`DwmExtendFrameIntoClientArea`).
-  * Translucent glass card containers with specular hairline borders and top-edge light catch lines (`Theme::DrawGlassCard`).
-  * Telegram/Unigram chat-style master device list with 58px card rows, vibrant squircle category avatars (Cobalt, Purple, Emerald, Amber, Cyan), and two-line typography hierarchy.
-  * Right-aligned floating status pill badges and Unigram-style active card selection pills with vertical accent indicator bars.
-* **Granular Install Lifecycle Telemetry**:
-  * Device entries report explicit real-time states: `Waiting`, `Downloading (XX% / MB)`, `Installing`, `Verifying`, `Installed`, `Pending Restart`, and `Failed`.
-  * Inline sub-progress bars and status signal indicators directly inside the device list rows.
+* **Aerospace Deep Chassis UI**:
+  * Dark graphite surfaces (`#0F1115`, `#181B22`, `#212631`) with cobalt accent (`#2563EB`).
+  * Deterministic, opaque GDI rendering with compact telemetry rows and clear focus/selection states.
+  * System, light, and dark theme modes with persisted settings.
+* **Local Driver Pack Matching**:
+  * Scans the configured pack folder, indexes INF packages, ranks hardware ID matches, and checks catalog signatures.
+  * Unsigned candidates remain hidden unless enabled; each selected unsigned package gets a separate confirmation.
+  * Installation progress is marshalled back to the UI thread and reports actual Windows install errors.
 * **Hardware Inspector Deck (Right Pane)**:
   * Hero device profile card with large glowing squircle avatar, manufacturer info, and class GUID.
   * Side-by-side comparative telemetry bento grid comparing currently installed store drivers with staged candidate packages.
   * Hardware identification deck with instant "Copy ID" action.
-* **Session Install Journal & Smart Rescan**:
-  * Thread-safe session journal tracks staged INF files, version transitions, and reboot requirements.
-  * Prevents cyclic driver re-installation loops by recognizing staged packages awaiting reboot.
-* **One-Click Batch Actions**:
+* **Session Install Journal & Recovery**:
+  * Tracks packages staged during the current session and flags devices awaiting restart.
+  * Provides Windows recovery guidance; it does not claim to restore a previous driver package.
+* **Batch Actions**:
   * Mandatory **"Select All" / "Deselect All"** toolbar action and `Ctrl+A` accelerator with dynamic counter badge.
-  * Automated System Restore point creation before committing any batch installation.
+  * Per-driver confirmation for unsigned packages and visible package-version review before installation.
 * **Automated CI/CD Releases**:
   * Automated cloud builds via GitHub Actions on Windows runners (`windows-2022`).
-  * Releases, packaged archives (`DriverNest-1.3.0-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
+  * Releases, packaged archives (`DriverNest-1.3.1-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
 
 ---
 

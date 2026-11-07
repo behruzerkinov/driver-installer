@@ -16,6 +16,7 @@
 #include <memory>
 #include <sstream>
 #include <iomanip>
+#include <shlobj.h>
 
 namespace DriverNest::Ui {
 
@@ -54,40 +55,68 @@ INT_PTR CALLBACK SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 
 // --- Settings window (custom, not a dialog template) ---
 void ShowSettingsWindow(HWND hwndOwner) {
-    // Create a small modal-like window (we will actually make it modeless and
-    // disable the owner until closed).
-    HWND hwnd = CreateWindowExW(
-        0,
-        L"STATIC",
-        Strings::DlgSettingsTitle.data(),
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_CLIPSIBLINGS,
-        0, 0, 500, 400,
-        hwndOwner, nullptr,
-        GetModuleHandleW(nullptr),
-        nullptr
-    );
-    if (!hwnd) return;
-
-    // position centered over owner
-    RECT rOwner;
-    GetWindowRect(hwndOwner, &rOwner);
-    int ownerCx = rOwner.right - rOwner.left;
-    int ownerCy = rOwner.bottom - rOwner.top;
-    int ownerX = rOwner.left;
-    int ownerY = rOwner.top;
-    int w = 500, h = 400;
-    int x = ownerX + (ownerCx - w) / 2;
-    int y = ownerY + (ownerCy - h) / 2;
-    SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_NOZORDER);
-
-    // Apply theme
-    CurrentTheme().Refresh(hwnd);
-    ApplyThemeToWindow(hwnd);
-
-    // Placeholder: just show a message box for now; full settings UI later.
-    MessageBoxW(hwnd, L"Settings dialog placeholder. Full implementation in progress.",
-                Strings::DlgSettingsTitle.data(), MB_OK | MB_ICONINFORMATION);
-    DestroyWindow(hwnd);
+    auto& app = App::RunningApp();
+    enum : int { ChoosePackFolder = 1001, CycleTheme = 1002, ToggleUnsigned = 1003 };
+    bool rescanRequired = false;
+    for (;;) {
+        const wchar_t* themeName = app.settings.theme == L"Light" ? L"Light" :
+                                   app.settings.theme == L"Dark" ? L"Dark" : L"Follow system";
+        std::wstring content = L"Driver pack folder: ";
+        content += app.settings.packRoot.empty() ? L"(none)" : app.settings.packRoot.wstring();
+        content += L"\n\nUnsigned candidates: ";
+        content += app.settings.showUnsigned ? L"shown" : L"hidden";
+        std::wstring themeButton = std::wstring(L"Theme: ") + themeName + L" (change)";
+        TASKDIALOG_BUTTON buttons[] = {
+            { ChoosePackFolder, L"Choose driver pack folder..." },
+            { CycleTheme, themeButton.c_str() },
+            { ToggleUnsigned, app.settings.showUnsigned ? L"Hide unsigned candidates" : L"Show unsigned candidates" }
+        };
+        TASKDIALOGCONFIG config{};
+        config.cbSize = sizeof(config);
+        config.hwndParent = hwndOwner;
+        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+        config.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+        config.pszWindowTitle = Strings::DlgSettingsTitle.data();
+        config.pszMainInstruction = L"DriverNest settings";
+        config.pszContent = content.c_str();
+        config.cButtons = ARRAYSIZE(buttons);
+        config.pButtons = buttons;
+        config.nDefaultButton = ChoosePackFolder;
+        int pressed = IDCANCEL;
+        if (FAILED(TaskDialogIndirect(&config, &pressed, nullptr, nullptr))) break;
+        if (pressed == ChoosePackFolder) {
+            BROWSEINFOW browse{};
+            browse.hwndOwner = hwndOwner;
+            browse.lpszTitle = L"Choose the folder containing your driver packs";
+            browse.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+            PIDLIST_ABSOLUTE selected = SHBrowseForFolderW(&browse);
+            if (selected) {
+                wchar_t folder[MAX_PATH]{};
+                if (SHGetPathFromIDListW(selected, folder)) {
+                    app.settings.packRoot = folder;
+                    App::SaveSettings(app.settings);
+                    rescanRequired = true;
+                }
+                CoTaskMemFree(selected);
+            }
+        } else if (pressed == CycleTheme) {
+            if (app.settings.theme == L"System") app.settings.theme = L"Dark";
+            else if (app.settings.theme == L"Dark") app.settings.theme = L"Light";
+            else app.settings.theme = L"System";
+            auto& theme = CurrentTheme();
+            theme.mode = app.settings.theme == L"Dark" ? ThemeMode::Dark :
+                         app.settings.theme == L"Light" ? ThemeMode::Light : ThemeMode::System;
+            PostMessageW(hwndOwner, WM_APP_REFRESH_THEME, 0, 0);
+            App::SaveSettings(app.settings);
+        } else if (pressed == ToggleUnsigned) {
+            app.settings.showUnsigned = !app.settings.showUnsigned;
+            App::SaveSettings(app.settings);
+            rescanRequired = true;
+        } else {
+            break;
+        }
+    }
+    if (rescanRequired) PostMessageW(hwndOwner, WM_APP_TRIGGER_RESCAN, 0, 0);
 }
 
 // --- About dialog ---
@@ -242,9 +271,6 @@ void ShowConfirmWindow(HWND hwndOwner,
     for (auto& drv : drivers) {
         msg << L"• " << drv.first << L"  " << drv.second << L"\n";
     }
-    msg << L"\n" << Strings::DlgRestorePointNotice << L": ";
-    msg << Strings::DlgRestorePointCreated << L"\n";
-
     int answer = MessageBoxW(hwndOwner, msg.str().c_str(),
                              Strings::DlgConfirmTitle.data(),
                              MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND);
@@ -270,17 +296,16 @@ void ShowAboutDialog(HWND hwndOwner) {
 }
 
 void ShowUndoDialog(HWND hwndOwner) {
-    // Show a simple dialog with info about undoing the last batch.
+    // No previous package is persisted, so this control offers honest
+    // recovery guidance rather than claiming it can roll back a driver.
     std::wostringstream msg;
-    msg << L"Undo last batch restores the previously installed driver packages "
-           L"by reinstalling them via pnputil.\n\n"
-           L"If that is not possible, you can use System Restore manually.";
+    msg << L"DriverNest has no saved rollback package for this session.\n\n"
+           L"To recover a driver, open Device Manager, choose the device's Properties, "
+           L"then use the Driver tab's Roll Back Driver option. If that option is unavailable, "
+           L"use a Windows restore point.";
     MessageBoxW(hwndOwner, msg.str().c_str(),
-                Strings::DlgConfirmTitle.data(),
+                L"Driver recovery",
                 MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
-
-    // Actually perform undo
-    ::PostMessageW(hwndOwner, WM_APP_BEGIN_UNDO, 0, 0);
 }
 
 void ShowInstallProgress(HWND hwndOwner, InstallProgress& /*progress*/) {

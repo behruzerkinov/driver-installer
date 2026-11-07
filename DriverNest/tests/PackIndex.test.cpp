@@ -2,6 +2,7 @@
 #include "PackIndex.h"
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 
 namespace {
 
@@ -55,14 +56,15 @@ void TestRoundTrip() {
     std::filesystem::remove(tempPath, ec);
 }
 
-void WriteSampleInf(const std::filesystem::path& infPath, const char* hwid) {
+void WriteSampleInf(const std::filesystem::path& infPath, const char* hwid,
+                    const char* version = "1.0.0.0") {
     std::ofstream file(infPath);
     file << "[Version]\r\n";
     file << "Signature=\"$WINDOWS NT$\"\r\n";
     file << "Class=Net\r\n";
     file << "ClassGuid={4d36e972-e325-11ce-bfc1-08002be10318}\r\n";
     file << "Provider=%Vendor%\r\n";
-    file << "DriverVer=01/01/2024,1.0.0.0\r\n";
+    file << "DriverVer=01/01/2024," << version << "\r\n";
     file << "\r\n";
     file << "[Manufacturer]\r\n";
     file << "%Vendor%=Vendor,NTamd64\r\n";
@@ -96,6 +98,19 @@ void TestIncrementalUpdate() {
 
     // And a lookup for the new ID resolves to a record.
     TEST_ASSERT_EQ(idx.Lookup("PCI\\VEN_8086&DEV_5678").size(), 1);
+
+    // Changed packages must be reparsed, and deleted packages must disappear.
+    WriteSampleInf(idx.rootPath / "test.inf", "PCI\\VEN_8086&DEV_1234", "2.0.0.0");
+    std::filesystem::last_write_time(idx.rootPath / "test.inf",
+        std::filesystem::file_time_type::clock::now() + std::chrono::seconds(2), ec);
+    idx.UpdateIncremental(idx.rootPath);
+    TEST_ASSERT_EQ(idx.records.size(), 2);
+    TEST_ASSERT(DriverNest::Packs::PackIndex::UnpackVersion(idx.records[0].version) == L"2.0.0.0");
+
+    std::filesystem::remove(idx.rootPath / "test2.inf", ec);
+    idx.UpdateIncremental(idx.rootPath);
+    TEST_ASSERT_EQ(idx.records.size(), 1);
+    TEST_ASSERT_EQ(idx.Lookup("PCI\\VEN_8086&DEV_5678").size(), 0);
 
     std::filesystem::remove_all(idx.rootPath, ec);
 }

@@ -13,7 +13,7 @@ namespace DriverNest::Strings {
 // --- Application identity ---
 inline constexpr std::wstring_view AppName        = L"DriverNest";
 inline constexpr std::wstring_view AppTagline     = L"Find it. Verify it. Install it.";
-inline constexpr std::wstring_view AppVersion     = L"1.3.0";
+inline constexpr std::wstring_view AppVersion     = L"1.3.1";
 
 // --- Main window ---
 inline constexpr std::wstring_view WindowTitle    = L"DriverNest";
@@ -24,7 +24,7 @@ inline constexpr std::wstring_view BtnScan              = L"Scan Hardware";
 inline constexpr std::wstring_view BtnSelectAll         = L"Select All";
 inline constexpr std::wstring_view BtnDeselectAll       = L"Deselect All";
 inline constexpr std::wstring_view BtnInstallSelected   = L"Install Selected";
-inline constexpr std::wstring_view BtnUndoLastBatch     = L"Undo Batch";
+inline constexpr std::wstring_view BtnUndoLastBatch     = L"Recovery Help";
 inline constexpr std::wstring_view FilterAll            = L"All";
 inline constexpr std::wstring_view FilterMissing        = L"Missing";
 inline constexpr std::wstring_view FilterOutdated       = L"Outdated";
@@ -103,12 +103,9 @@ inline constexpr std::wstring_view ReasonUnsigned      = L"Unsigned / no catalog
 
 // --- Confirmation dialog ---
 inline constexpr std::wstring_view DlgConfirmTitle       = L"Confirm driver installation";
-inline constexpr std::wstring_view DlgConfirmBody        = L"You are about to install the selected drivers.\n\nA System Restore point will be created first so you can undo the changes if needed.\n\nReview the signer and version for each driver below:";
+inline constexpr std::wstring_view DlgConfirmBody        = L"You are about to install the selected local driver packages.\n\nReview the package version and signature status for each device. Windows may require a restart to apply the driver.";
 inline constexpr std::wstring_view DlgConfirmInstall     = L"Install";
 inline constexpr std::wstring_view DlgConfirmCancel      = L"Cancel";
-inline constexpr std::wstring_view DlgRestorePointNotice = L"Restore point";
-inline constexpr std::wstring_view DlgRestorePointCreated = L"Restore point created";
-inline constexpr std::wstring_view DlgRestorePointFailed = L"Could not create restore point (System Protection may be disabled). You can still continue, but undo will rely on reinstalling the previous driver package only.";
 
 // --- Settings dialog ---
 inline constexpr std::wstring_view DlgSettingsTitle    = L"Settings";
@@ -160,7 +157,7 @@ inline constexpr std::wstring_view ErrNoPackRoot    = L"No driver pack folder is
 inline constexpr std::wstring_view ErrScanFailed    = L"Device scan failed. Check the log for details.";
 inline constexpr std::wstring_view ErrIndexFailed   = L"Could not load the driver index. Rebuilding...";
 inline constexpr std::wstring_view ErrInstallFailed = L"Installation failed for one or more drivers. See the log for details.";
-inline constexpr std::wstring_view ErrUndoFailed    = L"Undo failed. You can try System Restore manually.";
+inline constexpr std::wstring_view ErrUndoFailed    = L"Driver recovery is unavailable. Use Device Manager or Windows System Restore.";
 
 // --- Context menu / list actions ---
 inline constexpr std::wstring_view CtxRefresh   = L"Refresh (F5)";

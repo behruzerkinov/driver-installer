@@ -47,6 +47,7 @@ constexpr int WM_APP_INSTALL_PROGRESS_UPDATE = WM_APP + 5;
 constexpr int WM_APP_INSTALL_ITEM_UPDATE     = WM_APP + 6;
 constexpr int WM_APP_INSTALL_ALL_COMPLETE   = WM_APP + 7;
 constexpr int WM_APP_TRIGGER_RESCAN         = WM_APP + 8;
+constexpr int WM_APP_REFRESH_THEME          = WM_APP + 9;
 
 // Animation timers
 constexpr UINT_PTR TIMER_SKELETON_ID = 5001;
