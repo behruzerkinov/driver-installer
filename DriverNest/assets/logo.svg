@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DriverNest icon source.
+  A simple nest outline with a chip inside.
+
+  - Nest: rounded bowl made of three arcs, drawn with a stroke.
+  - Chip: small rounded rectangle inside the nest representing the driving
+    hardware/software layer. No third-party artwork used.
+
+  Palette (neutral):
+    stroke: #2F7DE1 (accent blue)
+    fill (chip): #30333D (raised surface)
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="256"
+     height="256"
+     viewBox="0 0 256 256"
+     role="img"
+     aria-labelledby="dn-title dn-desc">
+  <title id="dn-title">DriverNest</title>
+  <desc id="dn-desc">A nest outline containing a chip, representing DriverNest.</desc>
+
+  <g id="nest" fill="none" stroke="#2F7DE1" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Outer nest bowl: three arcs that suggest woven material -->
+    <path d="M 40 120 Q 40 200 128 200 Q 216 200 216 120" />
+    <path d="M 56 108 Q 56 184 128 184 Q 200 184 200 108" />
+    <!-- small decorative inner stroke -->
+    <path d="M 72 96 Q 72 168 128 168 Q 184 168 184 96"
+          stroke-width="8" opacity="0.55" />
+  </g>
+
+  <!-- Chip inside the nest -->
+  <g id="chip">
+    <rect x="100" y="128"
+          width="56" height="40"
+          rx="6" ry="6"
+          fill="#30333D"
+          stroke="#2F7DE1"
+          stroke-width="4" />
+    <!-- chip pins (left and right) -->
+    <g fill="#2F7DE1">
+      <rect x="92" y="136" width="8" height="4" />
+      <rect x="92" y="144" width="8" height="4" />
+      <rect x="92" y="152" width="8" height="4" />
+      <rect x="156" y="136" width="8" height="4" />
+      <rect x="156" y="144" width="8" height="4" />
+      <rect x="156" y="152" width="8" height="4" />
+    </g>
+    <!-- chip die marking -->
+    <rect x="116" y="138"
+          width="24" height="20"
+          rx="2" ry="2"
+          fill="#2F7DE1"
+          opacity="0.85" />
+  </g>
+
+</svg>

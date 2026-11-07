@@ -1,0 +1,69 @@
+// DriverNest.rc
+// Resource script for the DriverNest application
+// This file is processed by CMake's configure_file() which replaces
+// @VARIABLE@ placeholders with actual values.
+
+#include <windows.h>
+#include <winres.h>
+
+// Notes:
+// - The manifest is embedded as RT_MANIFEST so Common Controls 6 and
+//   elevation requirements are applied without an external .exe.manifest file.
+// - Version info is produced from the CMake project() VERSION values.
+
+// -----------------------------------------------------------------------------
+// Icons
+// -----------------------------------------------------------------------------
+1 ICON "app.ico"
+
+// -----------------------------------------------------------------------------
+// Manifest
+// -----------------------------------------------------------------------------
+1 RT_MANIFEST "app.manifest"
+
+// -----------------------------------------------------------------------------
+// Version info
+// Filled in by CMake configure_file from project(DriverNest VERSION x.y.z).
+// -----------------------------------------------------------------------------
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
+PRODUCTVERSION  @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",  "DriverNest Project"
+            VALUE "FileDescription", "DriverNest"
+            VALUE "FileVersion",  "@PROJECT_VERSION@.0"
+            VALUE "InternalName", "DriverNest.exe"
+            VALUE "LegalCopyright", "Copyright (c) @CURRENT_YEAR@ DriverNest contributors"
+            VALUE "OriginalFilename", "DriverNest.exe"
+            VALUE "ProductName",  "DriverNest"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
+            VALUE "Comments",     "Free, lightweight, portable Windows driver installer."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+
+// -----------------------------------------------------------------------------
+// String table (application-wide resource identifiers referenced from code)
+// -----------------------------------------------------------------------------
+#define IDS_APP_TITLE       100
+#define IDS_VERSION_DETAIL  101
+#define IDS_CLIPBOARD_DIAG  102
+#define IDS_COPYRIGHT       103
+#define IDS_LICENSE         104
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE       "DriverNest"
+    IDS_VERSION_DETAIL  "DriverNest version @PROJECT_VERSION@"
+    IDS_CLIPBOARD_DIAG  "Diagnostics copied to clipboard."
+    IDS_COPYRIGHT       "Copyright (c) @CURRENT_YEAR@ DriverNest contributors"
+    IDS_LICENSE         "MIT License"
+END

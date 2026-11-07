@@ -1,0 +1,78 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "base-x64",
+      "displayName": "Base x64",
+      "description": "Common base for x64 builds",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/out/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist",
+        "DN_BUILD_TESTS": "ON",
+        "CMAKE_SYSTEM_VERSION": "10.0.22621.0"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "environment": {
+        "PATH": "C:\\BuildTools2022\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64;C:\\BuildTools2022\\VC\\Auxiliary\\Build;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22621.0\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+      }
+    },
+    {
+      "name": "release-x64",
+      "displayName": "Release (x64)",
+      "description": "Release build: /MT, /O2, LTO (/GL + /LTCG), static CRT, no debug info in binary.",
+      "inherits": "base-x64",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      }
+    },
+    {
+      "name": "debug-x64",
+      "displayName": "Debug (x64)",
+      "description": "Debug build: /MTd, /Od, /Zi, sanitizers off, symbols for debugging.",
+      "inherits": "base-x64",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release-x64",
+      "configurePreset": "release-x64",
+      "configuration": "Release",
+      "displayName": "Build Release (x64)",
+      "description": "Builds the release executable with LTCG/GL enabled."
+    },
+    {
+      "name": "debug-x64",
+      "configurePreset": "debug-x64",
+      "configuration": "Debug",
+      "displayName": "Build Debug (x64)",
+      "description": "Builds the debug executable with symbols."
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "release-x64",
+      "configurePreset": "release-x64",
+      "configuration": "Release",
+      "displayName": "Test Release (x64)",
+      "description": "Runs the unit tests built in Release mode."
+    },
+    {
+      "name": "debug-x64",
+      "configurePreset": "debug-x64",
+      "configuration": "Debug",
+      "displayName": "Build Debug (x64)",
+      "description": "Builds the debug executable with symbols."
+    }
+  ]
+}

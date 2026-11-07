@@ -1,0 +1,16 @@
+# Build output
+out/
+build/
+dist/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# CMake user presets
+CMakeUserPresets.json
+
+# OS noise
+Thumbs.db
+desktop.ini
