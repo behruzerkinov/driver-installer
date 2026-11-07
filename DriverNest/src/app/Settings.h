@@ -13,7 +13,8 @@ namespace DriverNest::App {
 //     PackRoot = <absolute folder path or empty>
 //     OnlineManifestUrl = <url or empty>
 //     ShowUnsigned = 0 | 1
-//     Theme = System | Light | Dark
+//     Theme = Dark (fixed)
+//     Accent = Blue | Violet | Teal | Amber
 //     LogLevel = Error | Warn | Info | Debug
 //     Language = en   (reserved for v1, always "en")
 //
@@ -24,7 +25,8 @@ struct Settings {
     std::filesystem::path packRoot;         // folder tree of driver packs
     std::wstring onlineManifestUrl;         // empty = offline only
     bool showUnsigned = false;              // include unsigned candidates
-    std::wstring theme = L"System";         // System | Light | Dark
+    std::wstring theme = L"Dark";           // Dark only
+    std::wstring accent = L"Blue";          // Blue | Violet | Teal | Amber
     std::wstring logLevel = L"Info";        // Error | Warn | Info | Debug
     std::wstring language = L"en";          // reserved (v1)
 

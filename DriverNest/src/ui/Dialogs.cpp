@@ -26,6 +26,14 @@ struct SettingsDlgCtx {
     HWND hwndOwner;
 };
 
+HRESULT CALLBACK DarkTaskDialogCallback(HWND hwnd, UINT notification, WPARAM, LPARAM, LONG_PTR) {
+    if (notification == TDN_CREATED) {
+        Theme::SetDarkMode(hwnd, true);
+        SetWindowTheme(hwnd, L"DarkMode_Explorer", nullptr);
+    }
+    return S_OK;
+}
+
 std::wstring BuildDiagnosticsString();
 
 // --- Shared dialog procedure table ---
@@ -56,19 +64,17 @@ INT_PTR CALLBACK SettingsProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 // --- Settings window (custom, not a dialog template) ---
 void ShowSettingsWindow(HWND hwndOwner) {
     auto& app = App::RunningApp();
-    enum : int { ChoosePackFolder = 1001, CycleTheme = 1002, ToggleUnsigned = 1003 };
+    enum : int { ChoosePackFolder = 1001, CycleAccent = 1002, ToggleUnsigned = 1003 };
     bool rescanRequired = false;
     for (;;) {
-        const wchar_t* themeName = app.settings.theme == L"Light" ? L"Light" :
-                                   app.settings.theme == L"Dark" ? L"Dark" : L"Follow system";
         std::wstring content = L"Driver pack folder: ";
         content += app.settings.packRoot.empty() ? L"(none)" : app.settings.packRoot.wstring();
         content += L"\n\nUnsigned candidates: ";
         content += app.settings.showUnsigned ? L"shown" : L"hidden";
-        std::wstring themeButton = std::wstring(L"Theme: ") + themeName + L" (change)";
+        std::wstring accentButton = std::wstring(L"Accent color: ") + app.settings.accent + L" (change)";
         TASKDIALOG_BUTTON buttons[] = {
             { ChoosePackFolder, L"Choose driver pack folder..." },
-            { CycleTheme, themeButton.c_str() },
+            { CycleAccent, accentButton.c_str() },
             { ToggleUnsigned, app.settings.showUnsigned ? L"Hide unsigned candidates" : L"Show unsigned candidates" }
         };
         TASKDIALOGCONFIG config{};
@@ -79,6 +85,7 @@ void ShowSettingsWindow(HWND hwndOwner) {
         config.pszWindowTitle = Strings::DlgSettingsTitle.data();
         config.pszMainInstruction = L"DriverNest settings";
         config.pszContent = content.c_str();
+        config.pfCallback = DarkTaskDialogCallback;
         config.cButtons = ARRAYSIZE(buttons);
         config.pButtons = buttons;
         config.nDefaultButton = ChoosePackFolder;
@@ -99,13 +106,8 @@ void ShowSettingsWindow(HWND hwndOwner) {
                 }
                 CoTaskMemFree(selected);
             }
-        } else if (pressed == CycleTheme) {
-            if (app.settings.theme == L"System") app.settings.theme = L"Dark";
-            else if (app.settings.theme == L"Dark") app.settings.theme = L"Light";
-            else app.settings.theme = L"System";
-            auto& theme = CurrentTheme();
-            theme.mode = app.settings.theme == L"Dark" ? ThemeMode::Dark :
-                         app.settings.theme == L"Light" ? ThemeMode::Light : ThemeMode::System;
+        } else if (pressed == CycleAccent) {
+            app.settings.accent = Theme::NextAccentName(app.settings.accent);
             PostMessageW(hwndOwner, WM_APP_REFRESH_THEME, 0, 0);
             App::SaveSettings(app.settings);
         } else if (pressed == ToggleUnsigned) {
@@ -265,16 +267,24 @@ std::wstring BuildDiagnosticsString() {
 // --- Confirm install dialog ---
 void ShowConfirmWindow(HWND hwndOwner,
                        const std::vector<std::pair<std::wstring, std::wstring>>& drivers) {
-    // Build message text
     std::wostringstream msg;
-    msg << Strings::DlgConfirmBody << L"\n\n";
+    msg << L"Review each version and signature before continuing. Windows may require a restart.\n\n";
     for (auto& drv : drivers) {
         msg << L"• " << drv.first << L"  " << drv.second << L"\n";
     }
-    int answer = MessageBoxW(hwndOwner, msg.str().c_str(),
-                             Strings::DlgConfirmTitle.data(),
-                             MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND);
-    if (answer == IDYES) {
+    const std::wstring body = msg.str();
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = hwndOwner;
+    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+    config.dwCommonButtons = TDCBF_YES_BUTTON | TDCBF_NO_BUTTON;
+    config.pszWindowTitle = Strings::DlgConfirmTitle.data();
+    config.pszMainInstruction = L"Confirm driver installation";
+    config.pszContent = body.c_str();
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.pfCallback = DarkTaskDialogCallback;
+    int pressed = IDNO;
+    if (SUCCEEDED(TaskDialogIndirect(&config, &pressed, nullptr, nullptr)) && pressed == IDYES) {
         // Proceed with install
         ::PostMessageW(hwndOwner, WM_APP_BEGIN_INSTALL, 0, 0);
     }

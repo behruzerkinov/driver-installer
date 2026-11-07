@@ -20,6 +20,7 @@ constexpr int ID_APP_SETTINGS     = 2004;
 constexpr int ID_APP_THEME_TOGGLE = 2005;
 constexpr int ID_APP_REFRESH      = 2006;
 constexpr int ID_APP_SELECT_ALL   = 2007;
+constexpr int ID_APP_SEARCH_ONLINE = 2014;
 
 // Bottom installation progress / pipeline bar
 constexpr int IDC_PROGRESS_PANEL  = 2008;
@@ -48,8 +49,10 @@ constexpr int WM_APP_INSTALL_ITEM_UPDATE     = WM_APP + 6;
 constexpr int WM_APP_INSTALL_ALL_COMPLETE   = WM_APP + 7;
 constexpr int WM_APP_TRIGGER_RESCAN         = WM_APP + 8;
 constexpr int WM_APP_REFRESH_THEME          = WM_APP + 9;
+constexpr int WM_APP_ONLINE_SEARCH_COMPLETE = WM_APP + 10;
 
 // Animation timers
 constexpr UINT_PTR TIMER_SKELETON_ID = 5001;
+constexpr UINT_PTR TIMER_ACCENT_ID = 5002;
 
 } // namespace DriverNest::Ui

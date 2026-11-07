@@ -56,14 +56,13 @@ struct ThemePalette {
 };
 
 enum class ThemeMode {
-    System,
-    Light,
     Dark,
 };
 
 struct Theme {
-    ThemeMode mode = ThemeMode::System;
-    bool dark = false;
+    ThemeMode mode = ThemeMode::Dark;
+    bool dark = true;
+    std::wstring accentName = L"Blue";
     ThemePalette palette{};
 
     // Typography
@@ -89,12 +88,14 @@ struct Theme {
     ~Theme();
 
     void Refresh(HWND hwndForAccent = nullptr);
+    void SetAccentColor(COLORREF color);
+    static std::wstring NextAccentName(std::wstring_view current);
+    static COLORREF AccentColor(std::wstring_view name);
     void CleanupGdi();
 
     static void SetDarkMode(HWND hwnd, bool dark);
     static COLORREF SystemAccentColor();
     static bool SystemIsDark();
-    static bool ModeIsDark(ThemeMode mode, bool systemDark);
 
     static COLORREF Blend(COLORREF c1, COLORREF c2, float t);
 

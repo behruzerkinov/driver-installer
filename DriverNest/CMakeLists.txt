@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(DriverNest
-    VERSION 1.3.1
+    VERSION 1.4.0
     DESCRIPTION "Free, lightweight, portable Windows driver installer"
     LANGUAGES CXX
 )
@@ -55,6 +55,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/install/Verify.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/install/InstallHistory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/net/Downloader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/net/OnlineIndex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/net/Hash.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MainWindow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/DeviceList.cpp
@@ -95,6 +96,7 @@ target_sources(DriverNest
 
         # networking
         src/net/Downloader.cpp
+        src/net/OnlineIndex.cpp
         src/net/Hash.cpp
 
         # UI

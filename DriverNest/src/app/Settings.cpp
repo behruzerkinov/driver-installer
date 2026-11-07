@@ -44,10 +44,9 @@ Settings LoadSettings() {
     Settings s;
     {
         std::lock_guard<std::mutex> guard(settingsMutex);
-        std::wstring theme = getIniField(L"General", L"Theme", L"System");
-        if (theme == L"Light") s.theme = L"Light";
-        else if (theme == L"Dark") s.theme = L"Dark";
-        else s.theme = L"System";
+        s.theme = L"Dark";
+        std::wstring accent = getIniField(L"General", L"Accent", L"Blue");
+        if (accent == L"Violet" || accent == L"Teal" || accent == L"Amber") s.accent = accent;
 
         std::wstring logLevel = getIniField(L"General", L"LogLevel", L"Info");
         if (logLevel == L"Error") s.logLevel = L"Error";
@@ -104,6 +103,7 @@ void SaveSettings(const Settings& s) {
     setIniField(L"General", L"OnlineManifestUrl", s.onlineManifestUrl);
     setIniField(L"General", L"ShowUnsigned", s.showUnsigned ? L"1" : L"0");
     setIniField(L"General", L"Theme", s.theme);
+    setIniField(L"General", L"Accent", s.accent);
     setIniField(L"General", L"LogLevel", s.logLevel);
     setIniField(L"General", L"Language", s.language);
 

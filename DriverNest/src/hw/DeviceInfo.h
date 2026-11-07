@@ -30,6 +30,11 @@ struct Device {
     std::wstring installedInf;        // path to the INF currently applied, may be empty
     std::wstring candidateInf;        // selected INF path from the configured driver pack
     std::wstring candidateVersion;    // version of the best matching pack candidate
+    std::wstring onlineCandidateVersion;
+    std::wstring onlineCandidateVendor;
+    std::wstring onlineCandidateDate;
+    std::wstring onlineCandidateFamily;
+    std::wstring onlineCandidateUrl;
     bool candidateSigned = false;     // catalog signature validated during ranking
     std::wstring installedVersion;    // e.g. "10.0.22621.1" or empty
     FILETIME     installedDate{};     // from DriverDate registry value

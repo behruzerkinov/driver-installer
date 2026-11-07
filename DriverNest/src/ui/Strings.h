@@ -13,7 +13,7 @@ namespace DriverNest::Strings {
 // --- Application identity ---
 inline constexpr std::wstring_view AppName        = L"DriverNest";
 inline constexpr std::wstring_view AppTagline     = L"Find it. Verify it. Install it.";
-inline constexpr std::wstring_view AppVersion     = L"1.3.1";
+inline constexpr std::wstring_view AppVersion     = L"1.4.0";
 
 // --- Main window ---
 inline constexpr std::wstring_view WindowTitle    = L"DriverNest";
@@ -21,6 +21,8 @@ inline constexpr std::wstring_view SearchPlaceholder = L"Search hardware node, I
 
 // --- Toolbar ---
 inline constexpr std::wstring_view BtnScan              = L"Scan Hardware";
+inline constexpr std::wstring_view BtnSearchOnline      = L"Search online";
+inline constexpr std::wstring_view BtnCancelOnline      = L"Cancel search";
 inline constexpr std::wstring_view BtnSelectAll         = L"Select All";
 inline constexpr std::wstring_view BtnDeselectAll       = L"Deselect All";
 inline constexpr std::wstring_view BtnInstallSelected   = L"Install Selected";

@@ -1,5 +1,6 @@
 #pragma once
 #include "DeviceInfo.h"
+#include "../net/OnlineIndex.h"
 #include <vector>
 #include <string>
 #include <windows.h>
@@ -29,9 +30,12 @@ class DeviceList {
 public:
     static void Init(HWND hwnd);
     static void SetMainWindow(HWND hwndMain);
+    static void Layout(HWND hwnd, int width);
+    static void RefreshTheme(HWND hwnd);
 
     // Replace the full device list
     static void SetDevices(HWND hwnd, std::vector<Hw::Device> devices);
+    static int SetOnlineCandidates(HWND hwnd, const std::vector<Net::OnlineDriverCandidate>& candidates);
 
     // Skeleton loading state
     static void SetScanning(HWND hwnd, bool scanning, float shimmerPhase = 0.0f);

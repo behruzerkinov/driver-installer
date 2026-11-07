@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-11-08
+
+### Added
+- Added opt-in hardware-ID lookup against WinDriverIndex and OEM/Microsoft Catalog download links, with CC BY 4.0 attribution.
+- Added Blue, Violet, Teal, and Amber accent choices with eased 180 ms transitions.
+
+### Fixed
+- Corrected `WM_NOTIFY` routing so custom list rendering, selection, and checkbox handling work.
+- Replaced the bright native device table header with a custom dark heading and responsive two-column device rows.
+- Limited the product to dark mode and applied dark styling to settings and install confirmation dialogs.
+- Fixed checkbox hit testing to use the actual click coordinates.
+
+### Changed
+- Online lookup runs only after the user requests it and opens allow-listed OEM or Microsoft sources for review; it does not auto-install online packages.
+- Updated release version to 1.4.0.
+
+---
+
 ## [1.3.1] - 2026-11-08
 
 ### Fixed

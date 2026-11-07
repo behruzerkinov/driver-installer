@@ -5,6 +5,8 @@
 #include "Strings.h"
 #include "install/InstallHistory.h"
 #include <commctrl.h>
+#include <shellapi.h>
+#include <uxtheme.h>
 #include <algorithm>
 #include <memory>
 #include <sstream>
@@ -118,6 +120,9 @@ void DetailsPane::Init(HWND hwnd, HWND hwndMain) {
         GetModuleHandleW(nullptr), nullptr
     );
 
+    SetWindowTheme(s->hCopyBtn, L"DarkMode_Explorer", nullptr);
+    SetWindowTheme(s->hInstallBtn, L"DarkMode_Explorer", nullptr);
+
     SetState(hwnd, s);
 }
 
@@ -127,7 +132,10 @@ void DetailsPane::SetDevice(HWND hwnd, const Hw::Device& device) {
     s->currentDevice = device;
     s->hasDevice = !device.instanceId.empty();
     ShowWindow(s->hCopyBtn, s->hasDevice ? SW_SHOW : SW_HIDE);
-    ShowWindow(s->hInstallBtn, (s->hasDevice && !s->currentDevice.candidateInf.empty() &&
+    const bool hasActionableDriver = !s->currentDevice.candidateInf.empty() ||
+                                     !s->currentDevice.onlineCandidateUrl.empty();
+    SetWindowTextW(s->hInstallBtn, s->currentDevice.candidateInf.empty() ? L"Open OEM download" : L"Install local driver");
+    ShowWindow(s->hInstallBtn, (s->hasDevice && hasActionableDriver &&
                                 s->currentDevice.state != Hw::DriverState::PendingRestart) ? SW_SHOW : SW_HIDE);
     InvalidateRect(hwnd, nullptr, FALSE);
 }
@@ -142,7 +150,7 @@ void DetailsPane::SetCandidate(HWND hwnd,
     auto* s = GetState(hwnd);
     if (!s) return;
     s->candidateInf = candidateInf;
-    s->candidateVersion = candidateVersion;
+    s->candidateVersion = candidateVersion.empty() ? s->currentDevice.onlineCandidateVersion : candidateVersion;
     s->signer = signer;
     s->score = score;
     s->reasonTags = std::move(reasonTags);
@@ -170,7 +178,11 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
             if (id == IDC_BTN_COPY_ID && s && s->hasDevice) {
                 CopyToClipboard(s->currentDevice.instanceId);
             } else if (id == IDC_BTN_INSTALL_ONE && s && s->hasDevice && s->hwndMain) {
-                ::PostMessageW(s->hwndMain, WM_APP_BEGIN_INSTALL, 1, 0);
+                if (!s->currentDevice.candidateInf.empty()) {
+                    ::PostMessageW(s->hwndMain, WM_APP_BEGIN_INSTALL, 1, 0);
+                } else if (!s->currentDevice.onlineCandidateUrl.empty()) {
+                    ShellExecuteW(hwnd, L"open", s->currentDevice.onlineCandidateUrl.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
             }
             return 0;
         }
@@ -227,13 +239,13 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
 
                 RECT emptyRc = rc;
                 emptyRc.top = cy / 3;
-                DrawTextW(memDC, L"Hardware Inspector Idle", -1, &emptyRc, DT_CENTER | DT_SINGLELINE | DT_NOPREFIX);
+                DrawTextW(memDC, L"Select a device", -1, &emptyRc, DT_CENTER | DT_SINGLELINE | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontRegular);
                 emptyRc.top += 30;
                 emptyRc.left += 36;
                 emptyRc.right -= 36;
-                DrawTextW(memDC, L"Select any device card from the navigation deck on the left to examine driver telemetry, candidate packages, and hardware identifiers.",
+                DrawTextW(memDC, L"Review installed driver details, hardware identifiers, and matching local or online sources.",
                           -1, &emptyRc, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
 
                 SelectObject(memDC, oldFont);
@@ -245,7 +257,7 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                 int pad = 16;
                 int y = 14;
 
-                // Card 1: Unigram Hero Profile Card
+                // Device summary
                 RECT heroRc = { pad, y, cx - pad, y + 104 };
                 Theme::DrawGlassCard(memDC, heroRc, t.palette.surfaceRaised, 220, t.palette.glassBorder, 10, true);
 
@@ -309,14 +321,14 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                     y += 76;
                 }
 
-                // Card 3: Two-Column Driver Comparison Bento Deck
+                // Installed and candidate driver comparison
                 RECT compRc = { pad, y, cx - pad, y + 118 };
                 Theme::DrawGlassCard(memDC, compRc, t.palette.surfaceRaised, 210, t.palette.glassBorder, 8, true);
 
                 SelectObject(memDC, t.fontBold);
                 SetTextColor(memDC, t.palette.text);
                 RECT compHeader = { compRc.left + 14, compRc.top + 10, compRc.right - 14, compRc.top + 28 };
-                DrawTextW(memDC, L"Driver Telemetry & Candidate Comparison", -1, &compHeader, DT_SINGLELINE | DT_NOPREFIX);
+                DrawTextW(memDC, L"Driver versions", -1, &compHeader, DT_SINGLELINE | DT_NOPREFIX);
 
                 int colW = (compRc.right - compRc.left - 36) / 2;
                 int col2Left = compRc.left + 14 + colW + 14;
@@ -349,21 +361,27 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                 SelectObject(memDC, t.fontSmall);
                 SetTextColor(memDC, t.palette.textSecondary);
                 RECT c2Tag = { c2Rc.left + 10, c2Rc.top + 8, c2Rc.right - 10, c2Rc.top + 24 };
-                DrawTextW(memDC, L"PACK STAGED CANDIDATE", -1, &c2Tag, DT_SINGLELINE | DT_NOPREFIX);
+                const wchar_t* candidateLabel = dev.candidateInf.empty()
+                    ? (dev.onlineCandidateUrl.empty() ? L"MATCHING SOURCE" : L"OEM ONLINE INDEX")
+                    : L"LOCAL PACK CANDIDATE";
+                DrawTextW(memDC, candidateLabel, -1, &c2Tag, DT_SINGLELINE | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontMono);
                 SetTextColor(memDC, (dev.state == Hw::DriverState::Outdated) ? t.palette.accent : t.palette.text);
                 RECT c2Ver = { c2Rc.left + 10, c2Rc.top + 26, c2Rc.right - 10, c2Rc.top + 46 };
                 std::wstring v2 = isWaitingRestart ? L"Installed this session" :
-                                 (dev.candidateVersion.empty() ? L"No verified candidate" : L"v" + dev.candidateVersion);
+                                 (!dev.candidateVersion.empty() ? L"v" + dev.candidateVersion :
+                                  !dev.onlineCandidateVersion.empty() ? L"v" + dev.onlineCandidateVersion : L"No matching candidate");
                 DrawTextW(memDC, v2.c_str(), -1, &c2Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontSmall);
                 SetTextColor(memDC, t.palette.textSecondary);
                 RECT c2Signer = { c2Rc.left + 10, c2Rc.top + 46, c2Rc.right - 10, c2Rc.bottom - 4 };
-                const wchar_t* signatureText = dev.candidateInf.empty() ? L"Catalog: none" :
-                                               dev.candidateSigned ? L"Catalog: verified" : L"Catalog: unsigned";
-                DrawTextW(memDC, signatureText, -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                std::wstring candidateSource = dev.candidateInf.empty()
+                    ? (dev.onlineCandidateVendor.empty() ? L"No indexed download source" :
+                       L"Source: " + dev.onlineCandidateVendor + L"  •  WinDriverIndex CC BY 4.0")
+                    : (dev.candidateSigned ? L"Catalog signature verified" : L"Catalog unsigned");
+                DrawTextW(memDC, candidateSource.c_str(), -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
                 y += 128;
 

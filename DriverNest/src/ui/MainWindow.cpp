@@ -12,6 +12,7 @@
 #include "app/Log.h"
 #include "packs/PackIndex.h"
 #include "packs/Ranker.h"
+#include "net/OnlineIndex.h"
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
@@ -54,6 +55,7 @@ MainWindow::MainWindow() = default;
 
 MainWindow::~MainWindow() {
     cancelInstall_->store(true);
+    cancelOnlineSearch_->store(true);
     if (hwnd_) {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
@@ -63,9 +65,8 @@ MainWindow::~MainWindow() {
 void MainWindow::Create(const App::Settings& settings) {
     // Load the persisted appearance before WM_CREATE paints the first frame.
     auto& theme = CurrentTheme();
-    if (settings.theme == L"Light") theme.mode = ThemeMode::Light;
-    else if (settings.theme == L"Dark") theme.mode = ThemeMode::Dark;
-    else theme.mode = ThemeMode::System;
+    theme.mode = ThemeMode::Dark;
+    theme.accentName = settings.accent;
 
     int width = std::max(1020, settings.mainWidth);
     int height = std::max(680, settings.mainHeight);
@@ -138,7 +139,7 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
         case WM_DPICHANGED:     return pThis->OnDpiChanged(wParam, lParam);
         case WM_SETTINGCHANGE:  return pThis->OnSettingChange(LoWord(wParam), reinterpret_cast<LPCTSTR>(lParam));
         case WM_COMMAND:        return pThis->OnCommand(HiWord(wParam), LoWord(wParam), reinterpret_cast<HWND>(lParam));
-        case WM_NOTIFY:         return pThis->OnNotify(reinterpret_cast<HWND>(lParam), lParam);
+        case WM_NOTIFY:         return pThis->OnNotify(nullptr, lParam);
         case WM_ERASEBKGND:     return pThis->OnEraseBkgnd(reinterpret_cast<HDC>(wParam));
         case WM_MOUSEMOVE:      return pThis->OnMouseMove(static_cast<UINT>(wParam), lParam);
         case WM_LBUTTONDOWN:    return pThis->OnLButtonDown(static_cast<UINT>(wParam), lParam);
@@ -159,6 +160,10 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
         }
 
         case WM_APP_BEGIN_INSTALL: {
+            if (pThis->isScanning_ || pThis->isInstalling_ || pThis->isOnlineSearching_) {
+                pThis->SetStatusText(L"Wait for the current operation to finish before installing.");
+                return 0;
+            }
             if (wParam != 0 && pThis->hDeviceList_) {
                 const int focused = ListView_GetNextItem(pThis->hDeviceList_, -1, LVNI_SELECTED);
                 if (focused >= 0) {
@@ -184,6 +189,7 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
             pThis->UpdateInstallButtonCount(DeviceList::GetSelectedCount(pThis->hDeviceList_));
             EnableWindow(pThis->hScanBtn_, TRUE);
             EnableWindow(pThis->hSelectAllBtn_, TRUE);
+            EnableWindow(pThis->hOnlineBtn_, !pThis->isOnlineSearching_);
 
             RECT r;
             GetClientRect(hwnd, &r);
@@ -212,9 +218,29 @@ LRESULT CALLBACK MainWindow::HandleMessage(HWND hwnd, UINT uMsg,
             return 0;
         }
 
-        case WM_APP_REFRESH_THEME:
+        case WM_APP_REFRESH_THEME: {
+            const auto previousAccent = CurrentTheme().palette.accent;
             pThis->RefreshTheme();
+            pThis->AnimateAccentFrom(previousAccent);
             return 0;
+        }
+
+        case WM_APP_ONLINE_SEARCH_COMPLETE: {
+            std::unique_ptr<std::vector<Net::OnlineDriverCandidate>> results(
+                reinterpret_cast<std::vector<Net::OnlineDriverCandidate>*>(lParam));
+            pThis->isOnlineSearching_ = false;
+            EnableWindow(pThis->hOnlineBtn_, !pThis->isScanning_);
+            SetWindowTextW(pThis->hOnlineBtn_, Strings::BtnSearchOnline.data());
+            const int matched = results
+                ? DeviceList::SetOnlineCandidates(pThis->hDeviceList_, *results)
+                : 0;
+            DetailsPane::RefreshFromSelection(pThis->hDeviceList_, pThis->hDetailsPane_, hwnd);
+            pThis->SetStatusText(pThis->cancelOnlineSearch_->load()
+                ? L"Online index search cancelled."
+                : L"WinDriverIndex: " + std::to_wstring(matched) + L" OEM download source(s). Data: CC BY 4.0.");
+            pThis->UpdateInstallButtonCount(DeviceList::GetSelectedCount(pThis->hDeviceList_));
+            return 0;
+        }
 
         case WM_APP_SCAN_COMPLETE: {
             auto* pDevs = reinterpret_cast<std::vector<Hw::Device>*>(wParam);
@@ -306,6 +332,10 @@ LRESULT MainWindow::OnCommand(WORD wNotifyCode, WORD wID, HWND /*hwndCtl*/) {
             StartScan();
             return 0;
 
+        case ID_APP_SEARCH_ONLINE:
+            StartOnlineSearch();
+            return 0;
+
         case ID_APP_SELECT_ALL:
             if (hDeviceList_) {
                 DeviceList::ToggleSelectAll(hDeviceList_);
@@ -328,7 +358,7 @@ LRESULT MainWindow::OnCommand(WORD wNotifyCode, WORD wID, HWND /*hwndCtl*/) {
             return 0;
 
         case ID_APP_THEME_TOGGLE:
-            ToggleTheme();
+            CycleAccent();
             return 0;
 
         case ID_APP_REFRESH:
@@ -345,15 +375,15 @@ LRESULT MainWindow::OnCommand(WORD wNotifyCode, WORD wID, HWND /*hwndCtl*/) {
     return 0;
 }
 
-LRESULT MainWindow::OnNotify(HWND hwndCtl, LPARAM lParam) {
-    if (!hwndCtl) return 0;
+LRESULT MainWindow::OnNotify(HWND /*hwndCtl*/, LPARAM lParam) {
     NMHDR* pnm = reinterpret_cast<NMHDR*>(lParam);
     if (!pnm) return 0;
 
-    if (hwndCtl == hDeviceList_) {
+    if (pnm->hwndFrom == hDeviceList_) {
         if (pnm->code == LVN_ITEMCHANGED) {
             NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
-            if (pnmv && (pnmv->uChanged & LVIF_STATE)) {
+            if (pnmv && (pnmv->uChanged & LVIF_STATE) &&
+                ((pnmv->uOldState ^ pnmv->uNewState) & LVIS_SELECTED)) {
                 DetailsPane::RefreshFromSelection(hDeviceList_, hDetailsPane_, hwnd_);
             }
         }
@@ -415,6 +445,18 @@ LRESULT MainWindow::OnLButtonUp(UINT /*wParam*/, LPARAM /*lParam*/) {
 }
 
 LRESULT MainWindow::OnTimer(UINT_PTR nIDEvent) {
+    if (nIDEvent == TIMER_ACCENT_ID) {
+        const ULONGLONG elapsed = GetTickCount64() - accentTransitionStart_;
+        const float linear = std::clamp(static_cast<float>(elapsed) / 180.0f, 0.0f, 1.0f);
+        const float eased = linear * linear * (3.0f - 2.0f * linear);
+        CurrentTheme().SetAccentColor(Theme::Blend(accentFrom_, accentTo_, eased));
+        if (hwnd_) RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+        if (linear >= 1.0f) {
+            KillTimer(hwnd_, TIMER_ACCENT_ID);
+            accentTransitioning_ = false;
+        }
+        return 0;
+    }
     if (nIDEvent == TIMER_SKELETON_ID) {
         shimmerPhase_ += 0.08f;
         if (hDeviceList_) {
@@ -499,6 +541,27 @@ LRESULT MainWindow::OnPaint() {
     MoveToEx(memDC, 0, toolbarTop + toolbarHeight_ - 1, nullptr);
     LineTo(memDC, cx, toolbarTop + toolbarHeight_ - 1);
 
+    // A bespoke label row keeps the list aligned with the detail panel while
+    // avoiding the legacy white ListView header.
+    int bodyTop = toolbarTop + toolbarHeight_;
+    const int leftPaneWidth = std::max(0, splitterPos_ - 2);
+    RECT devicesHeading = { 0, bodyTop, leftPaneWidth, bodyTop + 40 };
+    Theme::DrawGlassCard(memDC, devicesHeading, t.palette.surface, 255, t.palette.border, 0, false);
+    SetBkMode(memDC, TRANSPARENT);
+    HGDIOBJ headingFont = SelectObject(memDC, t.fontBold);
+    SetTextColor(memDC, t.palette.text);
+    RECT labelRc = { 16, bodyTop, 92, bodyTop + 40 };
+    DrawTextW(memDC, L"Devices", -1, &labelRc, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    SelectObject(memDC, t.fontSmall);
+    SetTextColor(memDC, t.palette.textSecondary);
+    std::wstring deviceCount = std::to_wstring(DeviceList::GetDeviceCount(hDeviceList_)) + L" detected";
+    RECT countRc = { 94, bodyTop, 190, bodyTop + 40 };
+    DrawTextW(memDC, deviceCount.c_str(), -1, &countRc, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    const int statusWidth = std::clamp(leftPaneWidth * 34 / 100, 148, 220);
+    RECT stateRc = { leftPaneWidth - statusWidth + 8, bodyTop, leftPaneWidth - 12, bodyTop + 40 };
+    DrawTextW(memDC, L"STATUS", -1, &stateRc, DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_NOPREFIX);
+    SelectObject(memDC, headingFont);
+
     if (showProgressPanel_) {
         const int progressTop = cy - statusHeight_ - progressHeight_;
         RECT progressRc = { 0, progressTop, cx, cy - statusHeight_ };
@@ -507,7 +570,6 @@ LRESULT MainWindow::OnPaint() {
     }
 
     // 4. Splitter Bar Grip
-    int bodyTop = toolbarTop + toolbarHeight_;
     int bodyBottom = cy - statusHeight_ - (showProgressPanel_ ? progressHeight_ : 0);
     RECT splitRc = { splitterPos_ - 2, bodyTop, splitterPos_ + 2, bodyBottom };
     FillRect(memDC, &splitRc, isDraggingSplitter_ ? t.brushAccent : t.brushSurfaceRaised);
@@ -544,16 +606,21 @@ LRESULT MainWindow::OnDrawItem(UINT /*idCtl*/, LPDRAWITEMSTRUCT pdis) {
     auto& t = CurrentTheme();
 
     if (pdis->CtlID == ID_APP_THEME_TOGGLE) {
-        // Theme Toggle Circular Glass Button
+        // Accent picker: a color chip, not a light/dark mode toggle.
         COLORREF bg = isSelected ? t.palette.surfaceActive : t.palette.surfaceRaised;
         Theme::DrawGlassCard(hdc, rc, bg, 230, isFocus ? t.palette.accent : t.palette.glassBorder, (rc.bottom - rc.top) / 2, true);
-
-        SetBkMode(hdc, TRANSPARENT);
-        HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
-        SetTextColor(hdc, t.palette.text);
-        const wchar_t* glyph = t.dark ? L"🌙" : L"☀️";
-        DrawTextW(hdc, glyph, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(hdc, oldFont);
+        const int side = 15;
+        int x = rc.left + ((rc.right - rc.left) - side) / 2;
+        int y = rc.top + ((rc.bottom - rc.top) - side) / 2;
+        HBRUSH swatch = CreateSolidBrush(t.palette.accent);
+        HPEN outline = CreatePen(PS_SOLID, 1, t.palette.text);
+        HGDIOBJ oldBrush = SelectObject(hdc, swatch);
+        HGDIOBJ oldPen = SelectObject(hdc, outline);
+        Ellipse(hdc, x, y, x + side, y + side);
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldBrush);
+        DeleteObject(outline);
+        DeleteObject(swatch);
         return TRUE;
     }
 
@@ -565,8 +632,17 @@ LRESULT MainWindow::OnDrawItem(UINT /*idCtl*/, LPDRAWITEMSTRUCT pdis) {
         SetBkMode(hdc, TRANSPARENT);
         HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
         SetTextColor(hdc, t.palette.text);
-        DrawTextW(hdc, L"⚙️", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, L"⚙", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, oldFont);
+        return TRUE;
+    }
+
+    if (pdis->CtlID == ID_APP_SEARCH_ONLINE) {
+        wchar_t onlineText[128] = L"";
+        GetWindowTextW(pdis->hwndItem, onlineText, ARRAYSIZE(onlineText));
+        const bool searching = wcscmp(onlineText, Strings::BtnCancelOnline.data()) == 0;
+        Theme::DrawAeroButton(hdc, rc, searching ? L"Cancel search" : L"⌕  Search online",
+                              isSelected, isFocus, false, isDisabled);
         return TRUE;
     }
 
@@ -639,9 +715,9 @@ void MainWindow::InitChildren() {
     SendMessageW(hSearchEdit_, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(Strings::SearchPlaceholder.data()));
     SendMessageW(hSearchEdit_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
 
-    // Theme Toggle Button
+    // Accent picker button
     hThemeToggle_ = CreateWindowExW(
-        0, L"BUTTON", L"",
+        0, L"BUTTON", L"Accent color",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
         0, 0, 36, 32,
         hwnd_, reinterpret_cast<HMENU>(ID_APP_THEME_TOGGLE),
@@ -650,7 +726,7 @@ void MainWindow::InitChildren() {
 
     // Settings Button
     hSettingsBtn_ = CreateWindowExW(
-        0, L"BUTTON", L"",
+        0, L"BUTTON", L"Settings",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
         0, 0, 36, 32,
         hwnd_, reinterpret_cast<HMENU>(ID_APP_SETTINGS),
@@ -663,6 +739,14 @@ void MainWindow::InitChildren() {
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
         0, 0, 90, 32,
         hwnd_, reinterpret_cast<HMENU>(ID_APP_SCAN),
+        GetModuleHandleW(nullptr), nullptr
+    );
+
+    hOnlineBtn_ = CreateWindowExW(
+        0, L"BUTTON", Strings::BtnSearchOnline.data(),
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
+        0, 0, 126, 32,
+        hwnd_, reinterpret_cast<HMENU>(ID_APP_SEARCH_ONLINE),
         GetModuleHandleW(nullptr), nullptr
     );
 
@@ -696,7 +780,7 @@ void MainWindow::InitChildren() {
     // 3. Body: DeviceList, Splitter, DetailsPane
     hDeviceList_ = CreateWindowExW(
         0, WC_LISTVIEWW, nullptr,
-        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
+        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
         0, 0, 500, 300,
         hwnd_, reinterpret_cast<HMENU>(IDC_DEVICE_LIST),
         GetModuleHandleW(nullptr), nullptr
@@ -776,6 +860,9 @@ void MainWindow::DoLayout(int cx, int cy) {
     SetWindowPos(hScanBtn_, nullptr, x, tbY, 86, btnH, SWP_NOZORDER);
     x += 86 + 8;
 
+    SetWindowPos(hOnlineBtn_, nullptr, x, tbY, 126, btnH, SWP_NOZORDER);
+    x += 126 + 8;
+
     SetWindowPos(hSelectAllBtn_, nullptr, x, tbY, 110, btnH, SWP_NOZORDER);
     x += 110 + 8;
 
@@ -800,7 +887,10 @@ void MainWindow::DoLayout(int cx, int cy) {
     splitterPos_ = std::clamp(splitterPos_, splitterMinLeft_, cx - splitterMinRight_);
 
     // Device List
-    SetWindowPos(hDeviceList_, nullptr, 0, bodyTop, splitterPos_ - 2, bodyH, SWP_NOZORDER);
+    constexpr int deviceHeaderHeight = 40;
+    SetWindowPos(hDeviceList_, nullptr, 0, bodyTop + deviceHeaderHeight,
+                 splitterPos_ - 2, std::max(1, bodyH - deviceHeaderHeight), SWP_NOZORDER);
+    DeviceList::Layout(hDeviceList_, splitterPos_ - 2);
 
     // Splitter
     SetWindowPos(hSplitter_, nullptr, splitterPos_ - 2, bodyTop, 4, bodyH, SWP_NOZORDER);
@@ -894,55 +984,104 @@ void MainWindow::UpdateInstallButtonCount(int count) {
 void MainWindow::SetScanning(bool scanning) {
     isScanning_ = scanning;
     if (scanning) {
+        cancelOnlineSearch_->store(true);
         SetTimer(hwnd_, TIMER_SKELETON_ID, 35, nullptr);
         DeviceList::SetScanning(hDeviceList_, true, shimmerPhase_);
         EnableWindow(hScanBtn_, FALSE);
         EnableWindow(hSelectAllBtn_, FALSE);
+        EnableWindow(hInstallBtn_, FALSE);
+        EnableWindow(hOnlineBtn_, FALSE);
         EnableInstallButton(false);
     } else {
         KillTimer(hwnd_, TIMER_SKELETON_ID);
         DeviceList::SetScanning(hDeviceList_, false);
         EnableWindow(hScanBtn_, TRUE);
         EnableWindow(hSelectAllBtn_, TRUE);
+        EnableWindow(hOnlineBtn_, !isOnlineSearching_);
         UpdateInstallButtonCount(DeviceList::GetSelectedCount(hDeviceList_));
     }
 }
 
-void MainWindow::ToggleTheme() {
+void MainWindow::CycleAccent() {
     auto& app = App::RunningApp();
-    auto mode = app.settings.theme;
-
-    if (mode == L"System") {
-        mode = L"Dark";
-        manualDark_ = true;
-    } else if (mode == L"Dark") {
-        mode = L"Light";
-    } else {
-        mode = L"System";
-        manualDark_ = false;
-    }
-
-    app.settings.theme = mode;
+    app.settings.accent = Theme::NextAccentName(app.settings.accent);
     App::SaveSettings(app.settings);
-    CurrentTheme().mode = mode == L"Dark" ? ThemeMode::Dark :
-                          mode == L"Light" ? ThemeMode::Light : ThemeMode::System;
-    RefreshTheme();
+    CurrentTheme().accentName = app.settings.accent;
+    const COLORREF from = CurrentTheme().palette.accent;
+    const COLORREF to = Theme::AccentColor(app.settings.accent);
+    accentTo_ = to;
+    accentFrom_ = from;
+    accentTransitionStart_ = GetTickCount64();
+    accentTransitioning_ = from != to;
+    if (accentTransitioning_) SetTimer(hwnd_, TIMER_ACCENT_ID, 16, nullptr);
 }
 
 void MainWindow::RefreshTheme() {
     auto& theme = CurrentTheme();
+    theme.accentName = App::RunningApp().settings.accent;
     theme.Refresh(hwnd_);
     if (hSearchEdit_) SendMessageW(hSearchEdit_, WM_SETFONT, reinterpret_cast<WPARAM>(theme.fontRegular), TRUE);
     if (hProgressText_) SendMessageW(hProgressText_, WM_SETFONT, reinterpret_cast<WPARAM>(theme.fontBold), TRUE);
-    if (hDeviceList_) ApplyThemeToWindow(hDeviceList_);
+    if (hDeviceList_) {
+        ApplyThemeToWindow(hDeviceList_);
+        DeviceList::RefreshTheme(hDeviceList_);
+    }
     if (hStatusBar_) ApplyThemeToWindow(hStatusBar_);
     if (hProgressBar_) ApplyThemeToWindow(hProgressBar_);
     if (hProgressCancel_) ApplyThemeToWindow(hProgressCancel_);
     if (hwnd_) RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
+void MainWindow::AnimateAccentFrom(COLORREF previousAccent) {
+    auto& theme = CurrentTheme();
+    accentTo_ = Theme::AccentColor(theme.accentName);
+    if (previousAccent == accentTo_) return;
+    accentFrom_ = previousAccent;
+    accentTransitionStart_ = GetTickCount64();
+    accentTransitioning_ = true;
+    SetTimer(hwnd_, TIMER_ACCENT_ID, 16, nullptr);
+}
+
 void MainWindow::OpenSettings() {
     ShowSettingsDialog(hwnd_);
+}
+
+void MainWindow::StartOnlineSearch() {
+    if (isScanning_ || isInstalling_) return;
+    if (isOnlineSearching_) {
+        cancelOnlineSearch_->store(true);
+        SetWindowTextW(hOnlineBtn_, L"Stopping...");
+        EnableWindow(hOnlineBtn_, FALSE);
+        return;
+    }
+
+    std::vector<Hw::Device> devices;
+    const int count = DeviceList::GetDeviceCount(hDeviceList_);
+    devices.reserve(static_cast<size_t>(std::max(count, 0)));
+    for (int i = 0; i < count; ++i) devices.push_back(DeviceList::GetDeviceAt(hDeviceList_, i));
+    if (devices.empty()) {
+        SetStatusText(L"Scan hardware before searching the online index.");
+        return;
+    }
+
+    isOnlineSearching_ = true;
+    cancelOnlineSearch_->store(false);
+    EnableWindow(hOnlineBtn_, TRUE);
+    EnableInstallButton(false);
+    SetWindowTextW(hOnlineBtn_, Strings::BtnCancelOnline.data());
+    SetStatusText(L"Searching WinDriverIndex for OEM driver download sources...");
+
+    const HWND target = hwnd_;
+    const auto cancel = cancelOnlineSearch_;
+    std::thread([target, cancel, devices = std::move(devices)]() mutable {
+        auto results = std::make_unique<std::vector<Net::OnlineDriverCandidate>>(
+            Net::SearchOnlineIndex(devices, *cancel));
+        auto* payload = results.release();
+        if (!PostMessageW(target, WM_APP_ONLINE_SEARCH_COMPLETE, 0,
+                          reinterpret_cast<LPARAM>(payload))) {
+            delete payload;
+        }
+    }).detach();
 }
 
 void MainWindow::RefreshRequested() {
@@ -1075,13 +1214,14 @@ void MainWindow::StartScan() {
 }
 
 void MainWindow::RunInstallPipeline() {
-    if (isInstalling_) return;
+    if (isInstalling_ || isScanning_ || isOnlineSearching_) return;
     isInstalling_ = true;
     cancelInstall_->store(false);
 
     EnableInstallButton(false);
     EnableWindow(hScanBtn_, FALSE);
     EnableWindow(hSelectAllBtn_, FALSE);
+    EnableWindow(hOnlineBtn_, FALSE);
 
     showProgressPanel_ = true;
     RECT r;

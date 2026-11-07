@@ -1,12 +1,13 @@
-# DriverNest v1.3.1
+# DriverNest v1.4.0
 
 **Find it. Verify it. Install it.**
 
-DriverNest is a free, portable Windows driver utility with an **Aerospace Deep Chassis** interface. It detects devices, ranks matching INF packages from a local driver pack, validates catalog signatures, and installs confirmed candidates.
+DriverNest is a free, portable Windows driver utility with a dark, information-dense interface. It detects devices, ranks matching INF packages from a local driver pack, validates catalog signatures, and installs confirmed local candidates.
 
 - Single portable executable, zero third-party runtime dependencies.
-- High-contrast graphite surfaces, cobalt accent, deterministic native GDI rendering.
+- Dark graphite surfaces with four accent colors and smooth accent transitions.
 - Local INF indexing, hardware ID candidate ranking, and catalog signature validation.
+- On-demand online hardware-ID lookup through WinDriverIndex, with OEM/Microsoft download links.
 - Separate confirmation for each unsigned driver candidate.
 - Automated CI/CD releases directly via GitHub Actions.
 
@@ -60,9 +61,9 @@ winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --quiet
 
 A driver pack is a folder tree containing `.inf` files with matching `.cat` catalogs. Place your packs in a folder and set that folder as the pack root in Settings.
 
-### Online Sources
+### Online Index
 
-Online catalog discovery is not available in this release. DriverNest only uses the local driver pack selected in Settings.
+Click **Search online** to query [WinDriverIndex](https://github.com/dtucny/WinDriverIndex), a public open-source index. Its published metadata is CC BY 4.0; DriverNest displays a matching family version and opens the corresponding OEM or Microsoft Catalog source. Index coverage varies by hardware family, and its newest listing is not a quality or compatibility guarantee. Confirm the exact device model and supported Windows version on the vendor page before downloading. Online packages are opened from their source and are not installed by DriverNest; use a downloaded or extracted local INF pack for installation.
 
 ## What it does not do
 
@@ -76,8 +77,8 @@ Online catalog discovery is not available in this release. DriverNest only uses 
 
 ## Security
 
-- No network activity unless you enable online sources in Settings.
-- Every downloaded package is hash-verified before use.
+- No network activity until you choose **Search online**.
+- Online results are metadata and source links; DriverNest does not silently download or install them.
 - Unsigned drivers require explicit per-driver confirmation.
 - INF files are parsed with bounds checks; files over 16 MB or lines over 8192 characters are rejected.
 - Only `pnputil.exe` and `7z.exe` (if configured) are spawned, always via full absolute paths under `%SystemRoot%\System32`.
@@ -90,7 +91,7 @@ MIT License — see [LICENSE](LICENSE).
 
 ## Contributing
 
-This is an original implementation. Do not copy code, artwork, icons, strings, or driver index formats from other driver tools.
+This is an original implementation. Online metadata is provided by WinDriverIndex under CC BY 4.0; its code is MIT licensed. Driver package rights remain with their OEM publishers.
 
 ## Documentation
 

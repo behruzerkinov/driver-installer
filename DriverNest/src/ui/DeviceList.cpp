@@ -16,11 +16,7 @@ namespace {
 
 constexpr int COL_DEVICE    = 0;
 constexpr int COL_STATUS    = 1;
-constexpr int COL_INSTALLED = 2;
-constexpr int COL_AVAILABLE = 3;
-constexpr int COL_SOURCE    = 4;
-
-constexpr int kRowHeight = 58; // Unigram Chat-Style 58px Card Row
+constexpr int kRowHeight = 62;
 
 HWND hwndMain_ = nullptr;
 
@@ -57,33 +53,15 @@ void SetupColumns(HWND hwnd) {
 
     col.fmt = LVCFMT_LEFT;
     col.iSubItem = COL_DEVICE;
-    col.pszText = const_cast<wchar_t*>(L"Hardware Device & Node");
+    col.pszText = const_cast<wchar_t*>(L"Device");
     col.cx = 320;
     ListView_InsertColumn(hwnd, COL_DEVICE, &col);
 
     col.fmt = LVCFMT_CENTER;
     col.iSubItem = COL_STATUS;
-    col.pszText = const_cast<wchar_t*>(L"Driver State");
-    col.cx = 160;
+    col.pszText = const_cast<wchar_t*>(L"Driver status");
+    col.cx = 170;
     ListView_InsertColumn(hwnd, COL_STATUS, &col);
-
-    col.fmt = LVCFMT_LEFT;
-    col.iSubItem = COL_INSTALLED;
-    col.pszText = const_cast<wchar_t*>(L"Installed");
-    col.cx = 130;
-    ListView_InsertColumn(hwnd, COL_INSTALLED, &col);
-
-    col.fmt = LVCFMT_LEFT;
-    col.iSubItem = COL_AVAILABLE;
-    col.pszText = const_cast<wchar_t*>(L"Candidate");
-    col.cx = 130;
-    ListView_InsertColumn(hwnd, COL_AVAILABLE, &col);
-
-    col.fmt = LVCFMT_LEFT;
-    col.iSubItem = COL_SOURCE;
-    col.pszText = const_cast<wchar_t*>(L"Origin");
-    col.cx = 120;
-    ListView_InsertColumn(hwnd, COL_SOURCE, &col);
 }
 
 void SetupExtendedStyles(HWND hwnd) {
@@ -93,7 +71,7 @@ void SetupExtendedStyles(HWND hwnd) {
                LVS_EX_SUBITEMIMAGES;
     ListView_SetExtendedListViewStyle(hwnd, exStyle);
 
-    // Unigram 58px card row height via imagelist
+    // Fixed row height keeps rows stable at every DPI.
     HIMAGELIST hImgList = ImageList_Create(1, kRowHeight, ILC_COLOR32, 1, 1);
     ListView_SetImageList(hwnd, hImgList, LVSIL_SMALL);
 }
@@ -104,6 +82,23 @@ void DeviceList::Init(HWND hwnd) {
     SetupColumns(hwnd);
     SetupExtendedStyles(hwnd);
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    RefreshTheme(hwnd);
+}
+
+void DeviceList::Layout(HWND hwnd, int width) {
+    if (!hwnd || width <= 0) return;
+    const int statusWidth = std::clamp(width * 34 / 100, 148, 220);
+    ListView_SetColumnWidth(hwnd, COL_DEVICE, width - statusWidth);
+    ListView_SetColumnWidth(hwnd, COL_STATUS, statusWidth);
+}
+
+void DeviceList::RefreshTheme(HWND hwnd) {
+    if (!hwnd) return;
+    const auto& palette = CurrentTheme().palette;
+    ListView_SetBkColor(hwnd, palette.background);
+    ListView_SetTextBkColor(hwnd, palette.background);
+    ListView_SetTextColor(hwnd, palette.text);
+    InvalidateRect(hwnd, nullptr, TRUE);
 }
 
 void DeviceList::SetMainWindow(HWND hwndMain) {
@@ -122,6 +117,7 @@ void DeviceList::SetDevices(HWND hwnd, std::vector<Hw::Device> devices) {
     // Pre-check outdated and missing devices by default
     for (size_t i = 0; i < s->devices.size(); ++i) {
         if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::Ok &&
             s->devices[i].state != Hw::DriverState::PendingRestart) {
             s->checkedList[i] = true;
         }
@@ -138,14 +134,38 @@ void DeviceList::SetDevices(HWND hwnd, std::vector<Hw::Device> devices) {
         ListView_InsertItem(hwnd, &item);
 
         ListView_SetItemText(hwnd, i, COL_STATUS, const_cast<wchar_t*>(L""));
-        ListView_SetItemText(hwnd, i, COL_INSTALLED, const_cast<wchar_t*>(s->devices[static_cast<size_t>(i)].installedVersion.c_str()));
-        ListView_SetItemText(hwnd, i, COL_AVAILABLE, const_cast<wchar_t*>(L""));
-        ListView_SetItemText(hwnd, i, COL_SOURCE, const_cast<wchar_t*>(L"Driver Store"));
     }
 
     if (s->hwndMain) {
         ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, GetSelectedCount(hwnd), 0);
     }
+}
+
+int DeviceList::SetOnlineCandidates(HWND hwnd, const std::vector<Net::OnlineDriverCandidate>& candidates) {
+    auto* s = GetState(hwnd);
+    if (!s) return 0;
+    for (auto& dev : s->devices) {
+        dev.onlineCandidateVersion.clear();
+        dev.onlineCandidateVendor.clear();
+        dev.onlineCandidateDate.clear();
+        dev.onlineCandidateFamily.clear();
+        dev.onlineCandidateUrl.clear();
+    }
+    int matched = 0;
+    for (const auto& candidate : candidates) {
+        for (auto& dev : s->devices) {
+            if (dev.instanceId != candidate.instanceId) continue;
+            dev.onlineCandidateVersion = candidate.version;
+            dev.onlineCandidateVendor = candidate.vendor;
+            dev.onlineCandidateDate = candidate.date;
+            dev.onlineCandidateFamily = candidate.family;
+            dev.onlineCandidateUrl = candidate.url;
+            ++matched;
+            break;
+        }
+    }
+    InvalidateRect(hwnd, nullptr, TRUE);
+    return matched;
 }
 
 void DeviceList::SetScanning(HWND hwnd, bool scanning, float shimmerPhase) {
@@ -170,6 +190,7 @@ void DeviceList::SelectAll(HWND hwnd) {
     if (!s) return;
     for (size_t i = 0; i < s->checkedList.size(); ++i) {
         if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::Ok &&
             s->devices[i].state != Hw::DriverState::PendingRestart) {
             s->checkedList[i] = true;
         }
@@ -204,6 +225,7 @@ bool DeviceList::AreAllSelected(HWND hwnd) {
     bool hasCandidate = false;
     for (size_t i = 0; i < s->checkedList.size(); ++i) {
         if (!s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::Ok &&
             s->devices[i].state != Hw::DriverState::PendingRestart) {
             hasCandidate = true;
             if (!s->checkedList[i]) return false;
@@ -247,6 +269,7 @@ std::vector<Hw::Device> DeviceList::GetSelectedDevices(HWND hwnd) {
     for (size_t i = 0; i < s->devices.size(); ++i) {
         if (i < s->checkedList.size() && s->checkedList[i] &&
             !s->devices[i].candidateInf.empty() &&
+            s->devices[i].state != Hw::DriverState::Ok &&
             s->devices[i].state != Hw::DriverState::PendingRestart) {
             result.push_back(s->devices[i]);
         }
@@ -360,10 +383,10 @@ void DeviceList::ResetProgress(HWND hwnd) {
     InvalidateRect(hwnd, nullptr, FALSE);
 }
 
-bool DeviceList::HandleClick(HWND hwnd, int x, int /*y*/) {
+bool DeviceList::HandleClick(HWND hwnd, int x, int y) {
     LVHITTESTINFO hit{};
     hit.pt.x = x;
-    hit.pt.y = 0;
+    hit.pt.y = y;
     int idx = ListView_HitTest(hwnd, &hit);
     if (idx >= 0) {
         auto* s = GetState(hwnd);
@@ -374,6 +397,7 @@ bool DeviceList::HandleClick(HWND hwnd, int x, int /*y*/) {
             // Click hit area on checkbox: x in [rc.left + 4, rc.left + 32]
             if (x >= rc.left + 4 && x <= rc.left + 32) {
                 if (!s->devices[static_cast<size_t>(idx)].candidateInf.empty() &&
+                    s->devices[static_cast<size_t>(idx)].state != Hw::DriverState::Ok &&
                     s->devices[static_cast<size_t>(idx)].state != Hw::DriverState::PendingRestart) {
                     s->checkedList[static_cast<size_t>(idx)] = !s->checkedList[static_cast<size_t>(idx)];
                     InvalidateRect(hwnd, &rc, FALSE);
@@ -519,9 +543,13 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                         SelectObject(hdc, t.fontMono);
                         SetTextColor(hdc, selected ? RGB(220, 235, 255) : t.palette.textSecondary);
 
-                        std::wstring subStr = dev.installedVersion.empty() ? L"No Driver Installed" : (L"Installed: v" + dev.installedVersion);
-                        if (!dev.installedInf.empty()) {
-                            subStr += L" (" + dev.installedInf + L")";
+                        std::wstring subStr = dev.installedVersion.empty()
+                            ? L"No driver installed"
+                            : (L"Installed " + dev.installedVersion);
+                        if (!dev.candidateVersion.empty()) {
+                            subStr += L"    →    Candidate " + dev.candidateVersion;
+                        } else if (!dev.onlineCandidateVersion.empty()) {
+                            subStr += L"    •    Online " + dev.onlineCandidateVersion + L" via " + dev.onlineCandidateVendor;
                         }
                         RECT subLineRc = { textX, cardRc.top + 28, textX + textW, cardRc.top + 46 };
                         DrawTextW(hdc, subStr.c_str(), -1, &subLineRc,
@@ -564,6 +592,8 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                             Theme::DrawUnigramPill(hdc, pillRc, L"Reboot Required", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
                         } else if (prog.state == ItemInstallState::Failed) {
                             Theme::DrawUnigramPill(hdc, pillRc, L"Install Failed", t.palette.errorBg, t.palette.error, t.palette.error, 1);
+                        } else if (!dev.onlineCandidateUrl.empty() && dev.candidateInf.empty()) {
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Online download", t.palette.infoBg, t.palette.info, t.palette.info, 1);
                         } else {
                             switch (dev.state) {
                                 case Hw::DriverState::PendingRestart:
@@ -586,47 +616,6 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                                     break;
                             }
                         }
-                        return CDRF_SKIPDEFAULT;
-                    }
-
-                    if (subItem == COL_INSTALLED) {
-                        RECT textRc = cardRc;
-                        textRc.left += 10;
-                        textRc.right -= 10;
-                        HGDIOBJ oldFont = SelectObject(hdc, t.fontMono);
-                        SetTextColor(hdc, selected ? RGB(240, 248, 255) : t.palette.textSecondary);
-                        const wchar_t* txt = dev.installedVersion.empty() ? L"(none)" : dev.installedVersion.c_str();
-                        DrawTextW(hdc, txt, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-                        SelectObject(hdc, oldFont);
-                        return CDRF_SKIPDEFAULT;
-                    }
-
-                    if (subItem == COL_AVAILABLE) {
-                        RECT textRc = cardRc;
-                        textRc.left += 10;
-                        textRc.right -= 10;
-                        HGDIOBJ oldFont = SelectObject(hdc, t.fontMono);
-                        if (!dev.candidateInf.empty()) {
-                            SetTextColor(hdc, t.palette.accent);
-                            DrawTextW(hdc, dev.candidateVersion.c_str(), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-                        } else {
-                            SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
-                            DrawTextW(hdc, L"—", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-                        }
-                        SelectObject(hdc, oldFont);
-                        return CDRF_SKIPDEFAULT;
-                    }
-
-                    if (subItem == COL_SOURCE) {
-                        RECT textRc = cardRc;
-                        textRc.left += 10;
-                        textRc.right -= 10;
-                        HGDIOBJ oldFont = SelectObject(hdc, t.fontSmall);
-                        SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
-                        const wchar_t* txt = !dev.candidateInf.empty() ? L"Local Pack" :
-                                             !dev.installedInf.empty() ? L"Driver Store" : L"Unknown";
-                        DrawTextW(hdc, txt, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-                        SelectObject(hdc, oldFont);
                         return CDRF_SKIPDEFAULT;
                     }
 

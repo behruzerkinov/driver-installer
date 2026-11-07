@@ -10,7 +10,6 @@ namespace DriverNest::Ui {
 
 namespace {
 
-constexpr COLORREF kBrandAccent = RGB(37, 99, 235); // Aerospace cobalt (#2563EB)
 constexpr wchar_t kPersonalizePath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 
 bool ReadSystemAppsUseLightTheme() {
@@ -149,6 +148,31 @@ Theme& CurrentTheme() {
     return theme;
 }
 
+COLORREF Theme::AccentColor(std::wstring_view name) {
+    if (name == L"Violet") return RGB(139, 92, 246);
+    if (name == L"Teal") return RGB(20, 184, 166);
+    if (name == L"Amber") return RGB(245, 158, 11);
+    return RGB(37, 99, 235);
+}
+
+std::wstring Theme::NextAccentName(std::wstring_view current) {
+    if (current == L"Blue") return L"Violet";
+    if (current == L"Violet") return L"Teal";
+    if (current == L"Teal") return L"Amber";
+    return L"Blue";
+}
+
+void Theme::SetAccentColor(COLORREF color) {
+    palette.accent = color;
+    palette.accentHover = Blend(color, RGB(255, 255, 255), 0.18f);
+    palette.accentPressed = Blend(color, RGB(0, 0, 0), 0.24f);
+    palette.accentLight = Blend(palette.surface, color, 0.28f);
+    palette.borderFocus = color;
+    palette.selection = Blend(palette.surface, color, 0.35f);
+    if (brushAccent) { DeleteObject(brushAccent); brushAccent = CreateSolidBrush(color); }
+    if (penAccent) { DeleteObject(penAccent); penAccent = CreatePen(PS_SOLID, 1, color); }
+}
+
 void Theme::CleanupGdi() {
     if (fontTitle)    { DeleteObject(fontTitle); fontTitle = nullptr; }
     if (fontSubtitle) { DeleteObject(fontSubtitle); fontSubtitle = nullptr; }
@@ -162,7 +186,6 @@ void Theme::CleanupGdi() {
     if (brushSurfaceRaised) { DeleteObject(brushSurfaceRaised); brushSurfaceRaised = nullptr; }
     if (brushSurfaceHover)  { DeleteObject(brushSurfaceHover); brushSurfaceHover = nullptr; }
     if (brushAccent)        { DeleteObject(brushAccent); brushAccent = nullptr; }
-
     if (penBorder) { DeleteObject(penBorder); penBorder = nullptr; }
     if (penAccent) { DeleteObject(penAccent); penAccent = nullptr; }
 }
@@ -170,11 +193,12 @@ void Theme::CleanupGdi() {
 void Theme::Refresh(HWND hwndForAccent) {
     CleanupGdi();
 
-    bool systemDark = SystemIsDark();
-    dark = ModeIsDark(mode, systemDark);
+    mode = ThemeMode::Dark;
+    dark = true;
 
-    // Keep the product's cobalt identity stable across Windows accent changes.
-    palette = BuildPalette(dark, kBrandAccent);
+    // Keep the product's dark identity stable across Windows appearance changes.
+    const COLORREF accent = AccentColor(accentName);
+    palette = BuildPalette(dark, accent);
 
     // Unigram Fluid Typography: Segoe UI Variable Display & Text
     fontTitle    = CreateUiFont(14, FW_BOLD, false, L"Segoe UI Variable Display");
@@ -213,11 +237,6 @@ void Theme::Refresh(HWND hwndForAccent) {
 
 bool Theme::SystemIsDark() {
     return !ReadSystemAppsUseLightTheme();
-}
-
-bool Theme::ModeIsDark(ThemeMode m, bool systemDark) {
-    if (m == ThemeMode::System) return systemDark;
-    return m == ThemeMode::Dark;
 }
 
 COLORREF Theme::SystemAccentColor() {

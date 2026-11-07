@@ -1,4 +1,4 @@
-# DriverNest v1.3.1
+# DriverNest v1.4.0
 
 [![Build and Release](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml)
 [![Latest Release](https://img.shields.io/github/v/release/behruzerkinov/driver-installer?color=blue&label=release)](https://github.com/behruzerkinov/driver-installer/releases)
@@ -18,14 +18,17 @@
 
 ## Key Features
 
-* **Aerospace Deep Chassis UI**:
-  * Dark graphite surfaces (`#0F1115`, `#181B22`, `#212631`) with cobalt accent (`#2563EB`).
-  * Deterministic, opaque GDI rendering with compact telemetry rows and clear focus/selection states.
-  * System, light, and dark theme modes with persisted settings.
+* **Dark graphite UI**:
+  * Opaque graphite surfaces with four persisted accent choices.
+  * Compact device rows with custom dark rendering, clear focus/selection states, and smooth accent transitions.
 * **Local Driver Pack Matching**:
   * Scans the configured pack folder, indexes INF packages, ranks hardware ID matches, and checks catalog signatures.
   * Unsigned candidates remain hidden unless enabled; each selected unsigned package gets a separate confirmation.
   * Installation progress is marshalled back to the UI thread and reports actual Windows install errors.
+* **Online Driver Index**:
+  * Optional, explicit hardware-ID search against [WinDriverIndex](https://github.com/dtucny/WinDriverIndex).
+  * Shows versions and opens allow-listed OEM or Microsoft Catalog sources; online packages are never auto-installed.
+  * Index metadata is CC BY 4.0; coverage varies by device family and its newest listing is not a compatibility guarantee. Review the OEM model and OS requirements before download.
 * **Hardware Inspector Deck (Right Pane)**:
   * Hero device profile card with large glowing squircle avatar, manufacturer info, and class GUID.
   * Side-by-side comparative telemetry bento grid comparing currently installed store drivers with staged candidate packages.
@@ -38,7 +41,7 @@
   * Per-driver confirmation for unsigned packages and visible package-version review before installation.
 * **Automated CI/CD Releases**:
   * Automated cloud builds via GitHub Actions on Windows runners (`windows-2022`).
-  * Releases, packaged archives (`DriverNest-1.3.1-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
+  * Releases, packaged archives (`DriverNest-1.4.0-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
 
 ---
 

@@ -39,6 +39,7 @@ private:
     // Sub-controls
     HWND hSearchEdit_ = nullptr;
     HWND hScanBtn_ = nullptr;
+    HWND hOnlineBtn_ = nullptr;
     HWND hSelectAllBtn_ = nullptr;
     HWND hInstallBtn_ = nullptr;
     HWND hUndoBtn_ = nullptr;
@@ -66,12 +67,17 @@ private:
     int splitterMinRight_ = 300;
     bool isDraggingSplitter_ = false;
 
-    bool manualDark_ = false;
     bool isScanning_ = false;
     float shimmerPhase_ = 0.0f;
 
     std::atomic<bool> isInstalling_{false};
     std::shared_ptr<std::atomic<bool>> cancelInstall_ = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<bool>> cancelOnlineSearch_ = std::make_shared<std::atomic<bool>>(false);
+    bool isOnlineSearching_ = false;
+    bool accentTransitioning_ = false;
+    COLORREF accentFrom_ = RGB(37, 99, 235);
+    COLORREF accentTo_ = RGB(37, 99, 235);
+    ULONGLONG accentTransitionStart_ = 0;
 
     // Message handlers
     LRESULT OnCreate(LPCREATESTRUCT pcs);
@@ -96,7 +102,9 @@ private:
 
     void InitChildren();
     void DoLayout(int cx, int cy);
-    void ToggleTheme();
+    void CycleAccent();
+    void AnimateAccentFrom(COLORREF previousAccent);
+    void StartOnlineSearch();
     void OpenSettings();
     void RefreshRequested();
     void InstallSelectedRequested();
