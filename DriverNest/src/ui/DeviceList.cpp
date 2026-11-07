@@ -19,6 +19,8 @@ constexpr int COL_INSTALLED = 2;
 constexpr int COL_AVAILABLE = 3;
 constexpr int COL_SOURCE    = 4;
 
+constexpr int kRowHeight = 58; // Unigram Chat-Style 58px Card Row
+
 HWND hwndMain_ = nullptr;
 
 struct State {
@@ -40,37 +42,45 @@ void SetState(HWND hwnd, State* state) {
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 }
 
+COLORREF GetClassAccent(std::wstring_view classGuid, const ThemePalette& pal) {
+    if (classGuid.find(L"4d36e968") != std::wstring_view::npos) return pal.gpuAccent;
+    if (classGuid.find(L"4d36e972") != std::wstring_view::npos) return pal.netAccent;
+    if (classGuid.find(L"4d36e96c") != std::wstring_view::npos) return pal.audioAccent;
+    if (classGuid.find(L"36fc9e60") != std::wstring_view::npos) return pal.usbAccent;
+    return pal.sysAccent;
+}
+
 void SetupColumns(HWND hwnd) {
     LV_COLUMNW col{};
     col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM | LVCF_FMT;
 
     col.fmt = LVCFMT_LEFT;
     col.iSubItem = COL_DEVICE;
-    col.pszText = const_cast<wchar_t*>(L"Hardware Node / Device");
-    col.cx = 290;
+    col.pszText = const_cast<wchar_t*>(L"Hardware Device & Node");
+    col.cx = 320;
     ListView_InsertColumn(hwnd, COL_DEVICE, &col);
 
     col.fmt = LVCFMT_CENTER;
     col.iSubItem = COL_STATUS;
     col.pszText = const_cast<wchar_t*>(L"Driver State");
-    col.cx = 170;
+    col.cx = 160;
     ListView_InsertColumn(hwnd, COL_STATUS, &col);
 
     col.fmt = LVCFMT_LEFT;
     col.iSubItem = COL_INSTALLED;
     col.pszText = const_cast<wchar_t*>(L"Installed");
-    col.cx = 135;
+    col.cx = 130;
     ListView_InsertColumn(hwnd, COL_INSTALLED, &col);
 
     col.fmt = LVCFMT_LEFT;
     col.iSubItem = COL_AVAILABLE;
-    col.pszText = const_cast<wchar_t*>(L"Pack Staged");
-    col.cx = 135;
+    col.pszText = const_cast<wchar_t*>(L"Candidate");
+    col.cx = 130;
     ListView_InsertColumn(hwnd, COL_AVAILABLE, &col);
 
     col.fmt = LVCFMT_LEFT;
     col.iSubItem = COL_SOURCE;
-    col.pszText = const_cast<wchar_t*>(L"Repository");
+    col.pszText = const_cast<wchar_t*>(L"Origin");
     col.cx = 120;
     ListView_InsertColumn(hwnd, COL_SOURCE, &col);
 }
@@ -82,8 +92,8 @@ void SetupExtendedStyles(HWND hwnd) {
                LVS_EX_SUBITEMIMAGES;
     ListView_SetExtendedListViewStyle(hwnd, exStyle);
 
-    // Enforce 38px row height via imagelist
-    HIMAGELIST hImgList = ImageList_Create(1, 38, ILC_COLOR32, 1, 1);
+    // Unigram 58px card row height via imagelist
+    HIMAGELIST hImgList = ImageList_Create(1, kRowHeight, ILC_COLOR32, 1, 1);
     ListView_SetImageList(hwnd, hImgList, LVSIL_SMALL);
 }
 
@@ -97,6 +107,44 @@ void DeviceList::Init(HWND hwnd) {
 
 void DeviceList::SetMainWindow(HWND hwndMain) {
     hwndMain_ = hwndMain;
+}
+
+void DeviceList::SetDevices(HWND hwnd, std::vector<Hw::Device> devices) {
+    ListView_DeleteAllItems(hwnd);
+
+    auto* s = new State();
+    s->devices = std::move(devices);
+    s->progressList.resize(s->devices.size());
+    s->checkedList.resize(s->devices.size(), false);
+    s->hwndMain = hwndMain_;
+
+    // Pre-check outdated and missing devices by default
+    for (size_t i = 0; i < s->devices.size(); ++i) {
+        if (s->devices[i].state == Hw::DriverState::Outdated ||
+            s->devices[i].state == Hw::DriverState::Missing) {
+            s->checkedList[i] = true;
+        }
+    }
+
+    SetState(hwnd, s);
+
+    for (int i = 0; i < static_cast<int>(s->devices.size()); ++i) {
+        LV_ITEMW item{};
+        item.mask = LVIF_TEXT;
+        item.iItem = i;
+        item.iSubItem = COL_DEVICE;
+        item.pszText = const_cast<wchar_t*>(s->devices[static_cast<size_t>(i)].description.c_str());
+        ListView_InsertItem(hwnd, &item);
+
+        ListView_SetItemText(hwnd, i, COL_STATUS, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(hwnd, i, COL_INSTALLED, const_cast<wchar_t*>(s->devices[static_cast<size_t>(i)].installedVersion.c_str()));
+        ListView_SetItemText(hwnd, i, COL_AVAILABLE, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(hwnd, i, COL_SOURCE, const_cast<wchar_t*>(L"Driver Store"));
+    }
+
+    if (s->hwndMain) {
+        ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, GetSelectedCount(hwnd), 0);
+    }
 }
 
 void DeviceList::SetScanning(HWND hwnd, bool scanning, float shimmerPhase) {
@@ -113,57 +161,7 @@ void DeviceList::SetScanning(HWND hwnd, bool scanning, float shimmerPhase) {
 
 bool DeviceList::IsScanning(HWND hwnd) {
     auto* s = GetState(hwnd);
-    return s ? s->scanning : false;
-}
-
-void DeviceList::SetDevices(HWND hwnd, std::vector<Hw::Device> devices) {
-    ListView_DeleteAllItems(hwnd);
-
-    auto* state = new State();
-    state->devices = std::move(devices);
-    state->hwndMain = hwndMain_;
-    state->scanning = false;
-    state->progressList.resize(state->devices.size());
-    state->checkedList.resize(state->devices.size(), false);
-
-    // Pre-select out-of-date or missing drivers (never select reboot-pending)
-    for (size_t i = 0; i < state->devices.size(); ++i) {
-        auto& d = state->devices[i];
-        if (d.state == Hw::DriverState::PendingRestart) {
-            state->checkedList[i] = false;
-            state->progressList[i].state = ItemInstallState::PendingRestart;
-        } else if (d.state == Hw::DriverState::Outdated || d.state == Hw::DriverState::Missing) {
-            state->checkedList[i] = true;
-        } else {
-            state->checkedList[i] = false;
-        }
-    }
-
-    SetState(hwnd, state);
-
-    for (int i = 0; i < static_cast<int>(state->devices.size()); ++i) {
-        const auto& dev = state->devices[static_cast<size_t>(i)];
-
-        LVITEMW item{};
-        item.mask = LVIF_TEXT | LVIF_PARAM;
-        item.iItem = i;
-        item.iSubItem = COL_DEVICE;
-        item.pszText = const_cast<wchar_t*>(dev.description.c_str());
-        item.lParam = static_cast<LPARAM>(i);
-        ListView_InsertItem(hwnd, &item);
-
-        ListView_SetItemText(hwnd, i, COL_STATUS, const_cast<wchar_t*>(L""));
-        ListView_SetItemText(hwnd, i, COL_INSTALLED,
-                             const_cast<wchar_t*>(dev.installedVersion.empty() ? L"-" : dev.installedVersion.c_str()));
-        ListView_SetItemText(hwnd, i, COL_AVAILABLE, const_cast<wchar_t*>(L"-"));
-        ListView_SetItemText(hwnd, i, COL_SOURCE,
-                             const_cast<wchar_t*>(dev.installedInf.empty() ? L"Pack Repository" : L"System"));
-    }
-
-    if (hwndMain_) {
-        int checked = GetSelectedCount(hwnd);
-        ::PostMessageW(hwndMain_, WM_APP_UPDATE_INSTALL_BUTTON, checked, 0);
-    }
+    return s && s->scanning;
 }
 
 void DeviceList::SelectAll(HWND hwnd) {
@@ -183,9 +181,7 @@ void DeviceList::SelectAll(HWND hwnd) {
 void DeviceList::DeselectAll(HWND hwnd) {
     auto* s = GetState(hwnd);
     if (!s) return;
-    for (size_t i = 0; i < s->checkedList.size(); ++i) {
-        s->checkedList[i] = false;
-    }
+    std::fill(s->checkedList.begin(), s->checkedList.end(), false);
     InvalidateRect(hwnd, nullptr, FALSE);
     if (s->hwndMain) {
         ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, 0, 0);
@@ -202,48 +198,40 @@ void DeviceList::ToggleSelectAll(HWND hwnd) {
 
 bool DeviceList::AreAllSelected(HWND hwnd) {
     auto* s = GetState(hwnd);
-    if (!s || s->devices.empty()) return false;
-    int eligible = 0;
-    int checkedEligible = 0;
-    for (size_t i = 0; i < s->devices.size(); ++i) {
-        if (s->devices[i].state != Hw::DriverState::PendingRestart &&
-            s->devices[i].state != Hw::DriverState::Ok) {
-            ++eligible;
-            if (s->checkedList[i]) ++checkedEligible;
+    if (!s || s->checkedList.empty()) return false;
+    for (size_t i = 0; i < s->checkedList.size(); ++i) {
+        if (s->devices[i].state != Hw::DriverState::PendingRestart && !s->checkedList[i]) {
+            return false;
         }
     }
-    if (eligible == 0) {
-        return GetSelectedCount(hwnd) == static_cast<int>(s->devices.size());
-    }
-    return checkedEligible >= eligible;
+    return true;
 }
 
 int DeviceList::GetSelectedCount(HWND hwnd) {
     auto* s = GetState(hwnd);
     if (!s) return 0;
     int count = 0;
-    for (bool chk : s->checkedList) {
-        if (chk) ++count;
+    for (bool c : s->checkedList) {
+        if (c) ++count;
     }
     return count;
 }
 
 void DeviceList::ClearSelection(HWND hwnd) {
     DeselectAll(hwnd);
-    ListView_SetItemState(hwnd, -1, 0, LVIS_SELECTED);
 }
 
 std::vector<std::wstring> DeviceList::GetSelectedInstanceIds(HWND hwnd) {
-    std::vector<std::wstring> ids;
+    std::vector<std::wstring> result;
     auto* s = GetState(hwnd);
-    if (!s) return ids;
+    if (!s) return result;
 
     for (size_t i = 0; i < s->devices.size(); ++i) {
         if (i < s->checkedList.size() && s->checkedList[i]) {
-            ids.push_back(s->devices[i].instanceId);
+            result.push_back(s->devices[i].instanceId);
         }
     }
-    return ids;
+    return result;
 }
 
 Hw::Device DeviceList::GetDeviceAt(HWND hwnd, int index) {
@@ -302,13 +290,16 @@ bool DeviceList::HandleClick(HWND hwnd, int x, int /*y*/) {
 
         RECT rc;
         if (ListView_GetSubItemRect(hwnd, idx, COL_DEVICE, LVIR_BOUNDS, &rc)) {
-            if (x >= rc.left + 6 && x <= rc.left + 36) {
-                s->checkedList[static_cast<size_t>(idx)] = !s->checkedList[static_cast<size_t>(idx)];
-                InvalidateRect(hwnd, &rc, FALSE);
-                if (s->hwndMain) {
-                    ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, GetSelectedCount(hwnd), 0);
+            // Click hit area on checkbox: x in [rc.left + 4, rc.left + 32]
+            if (x >= rc.left + 4 && x <= rc.left + 32) {
+                if (s->devices[static_cast<size_t>(idx)].state != Hw::DriverState::PendingRestart) {
+                    s->checkedList[static_cast<size_t>(idx)] = !s->checkedList[static_cast<size_t>(idx)];
+                    InvalidateRect(hwnd, &rc, FALSE);
+                    if (s->hwndMain) {
+                        ::PostMessageW(s->hwndMain, WM_APP_UPDATE_INSTALL_BUTTON, GetSelectedCount(hwnd), 0);
+                    }
+                    return true;
                 }
-                return true;
             }
         }
     }
@@ -340,42 +331,39 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                         HDC hdc = nmc->nmcd.hdc;
                         RECT clientRc;
                         GetClientRect(hwnd, &clientRc);
-                        FillRect(hdc, &clientRc, t.brushSurface);
 
-                        int rowH = 38;
-                        int rows = std::min(8, static_cast<int>((clientRc.bottom - clientRc.top) / rowH + 1));
+                        // Translucent glass fill over blurry Acrylic backdrop
+                        Theme::DrawGlassCard(hdc, clientRc, t.palette.surface, 210, 0, 0, false);
+
+                        int rows = std::min(7, static_cast<int>((clientRc.bottom - clientRc.top) / kRowHeight + 1));
 
                         for (int r = 0; r < rows; ++r) {
-                            int y = clientRc.top + r * rowH;
-                            RECT rowRc = { clientRc.left, y, clientRc.right, y + rowH };
+                            int y = clientRc.top + r * kRowHeight;
+                            RECT rowRc = { clientRc.left + 6, y + 4, clientRc.right - 6, y + kRowHeight - 4 };
 
-                            HPEN linePen = CreatePen(PS_SOLID, 1, t.palette.border);
-                            HGDIOBJ oldPen = SelectObject(hdc, linePen);
-                            MoveToEx(hdc, rowRc.left, rowRc.bottom - 1, nullptr);
-                            LineTo(hdc, rowRc.right, rowRc.bottom - 1);
-                            SelectObject(hdc, oldPen);
-                            DeleteObject(linePen);
+                            // Skeleton Card container
+                            Theme::DrawGlassCard(hdc, rowRc, t.palette.surfaceRaised, 180, t.palette.glassBorderSubtle, 8, false);
 
-                            // Skeleton Checkbox
-                            RECT cbRc = { rowRc.left + 12, y + 11, rowRc.left + 28, y + 27 };
+                            // Checkbox skeleton
+                            RECT cbRc = { rowRc.left + 10, y + 18, rowRc.left + 28, y + 36 };
                             Theme::DrawScanlineSkeleton(hdc, cbRc, s->shimmerPhase + r * 0.35f);
 
-                            // Skeleton Category Icon
-                            RECT icRc = { rowRc.left + 36, y + 12, rowRc.left + 50, y + 26 };
+                            // Squircle avatar skeleton
+                            RECT icRc = { rowRc.left + 36, y + 10, rowRc.left + 74, y + 48 };
                             Theme::DrawScanlineSkeleton(hdc, icRc, s->shimmerPhase + r * 0.35f + 0.1f);
 
-                            // Skeleton Title Bar
-                            int w = 170 + ((r * 43) % 95);
-                            RECT titleRc = { rowRc.left + 58, y + 12, rowRc.left + 58 + w, y + 26 };
+                            // Title skeleton
+                            int w = 180 + ((r * 43) % 100);
+                            RECT titleRc = { rowRc.left + 84, y + 12, rowRc.left + 84 + w, y + 26 };
                             Theme::DrawScanlineSkeleton(hdc, titleRc, s->shimmerPhase + r * 0.35f + 0.2f);
 
-                            // Skeleton Status Pill
-                            RECT statusRc = { rowRc.left + 310, y + 8, rowRc.left + 430, y + 30 };
-                            Theme::DrawScanlineSkeleton(hdc, statusRc, s->shimmerPhase + r * 0.35f + 0.35f);
+                            // Subtitle skeleton
+                            RECT subRc = { rowRc.left + 84, y + 32, rowRc.left + 220, y + 44 };
+                            Theme::DrawScanlineSkeleton(hdc, subRc, s->shimmerPhase + r * 0.35f + 0.35f);
 
-                            // Skeleton Version Bar
-                            RECT verRc = { rowRc.left + 480, y + 12, rowRc.left + 580, y + 26 };
-                            Theme::DrawScanlineSkeleton(hdc, verRc, s->shimmerPhase + r * 0.35f + 0.5f);
+                            // Status Pill skeleton
+                            RECT statusRc = { rowRc.right - 140, y + 16, rowRc.right - 12, y + 38 };
+                            Theme::DrawScanlineSkeleton(hdc, statusRc, s->shimmerPhase + r * 0.35f + 0.5f);
                         }
                         return CDRF_SKIPDEFAULT;
                     }
@@ -402,56 +390,77 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                     RECT subRc;
                     ListView_GetSubItemRect(hwnd, item, subItem, LVIR_BOUNDS, &subRc);
 
-                    // Row Background
-                    COLORREF bgCol = selected ? t.palette.selection
-                                              : (item % 2 == 1 ? t.palette.surfaceRaised : t.palette.surface);
-                    HBRUSH bgBrush = CreateSolidBrush(bgCol);
-                    FillRect(hdc, &subRc, bgBrush);
-                    DeleteObject(bgBrush);
-
-                    // Subtle hairline divider
-                    HPEN linePen = CreatePen(PS_SOLID, 1, t.palette.border);
-                    HGDIOBJ oldPen = SelectObject(hdc, linePen);
-                    MoveToEx(hdc, subRc.left, subRc.bottom - 1, nullptr);
-                    LineTo(hdc, subRc.right, subRc.bottom - 1);
-                    SelectObject(hdc, oldPen);
-                    DeleteObject(linePen);
-
-                    SetBkMode(hdc, TRANSPARENT);
+                    // Row Card Container Rect
+                    RECT cardRc = { subRc.left + 4, subRc.top + 2, subRc.right - 4, subRc.bottom - 2 };
 
                     if (subItem == COL_DEVICE) {
+                        // Background Card (Unigram Chat Item Card)
+                        if (selected) {
+                            Theme::DrawGlassCard(hdc, cardRc, t.palette.selection, 240, t.palette.accent, 8, true);
+
+                            // Left Accent Indicator Pill (Unigram signature)
+                            RECT barRc = { cardRc.left + 2, cardRc.top + 8, cardRc.left + 5, cardRc.bottom - 8 };
+                            HBRUSH barBrush = CreateSolidBrush(t.palette.accent);
+                            FillRect(hdc, &barRc, barBrush);
+                            DeleteObject(barBrush);
+                        } else {
+                            COLORREF cardBg = (item % 2 == 1) ? t.palette.surfaceRaised : t.palette.surface;
+                            Theme::DrawGlassCard(hdc, cardRc, cardBg, 190, t.palette.glassBorderSubtle, 8, false);
+                        }
+
                         // 1. Checkbox
-                        int cbSize = 16;
-                        int cbX = subRc.left + 10;
-                        int cbY = subRc.top + (subRc.bottom - subRc.top - cbSize) / 2;
+                        int cbSize = 18;
+                        int cbX = cardRc.left + 10;
+                        int cbY = cardRc.top + (cardRc.bottom - cardRc.top - cbSize) / 2;
                         bool disabled = (dev.state == Hw::DriverState::PendingRestart);
                         Theme::DrawModernCheckbox(hdc, cbX, cbY, cbSize, checked, false, disabled);
 
-                        // 2. Hardware Category Emblem
-                        int icX = cbX + cbSize + 10;
-                        int icY = subRc.top + (subRc.bottom - subRc.top - 14) / 2;
-                        COLORREF icColor = selected ? t.palette.selectionText : t.palette.textSecondary;
-                        Theme::DrawCategoryIcon(hdc, icX, icY, dev.classGuid, icColor);
+                        // 2. Unigram Squircle Category Avatar
+                        RECT sqRc = { cbX + cbSize + 8, cardRc.top + 7, cbX + cbSize + 8 + 38, cardRc.top + 7 + 38 };
+                        COLORREF catCol = GetClassAccent(dev.classGuid, t.palette);
+                        Theme::DrawSquircleAvatar(hdc, sqRc, dev.classGuid, catCol, 10);
 
-                        // 3. Hardware Name / Description
-                        RECT textRc = subRc;
-                        textRc.left = icX + 22;
-                        textRc.right -= 6;
+                        // 3. Two-Line Typography
+                        int textX = sqRc.right + 10;
+                        int textW = cardRc.right - textX - 10;
 
-                        HGDIOBJ oldFont = SelectObject(hdc, t.fontRegular);
-                        SetTextColor(hdc, selected ? t.palette.selectionText : t.palette.text);
-                        DrawTextW(hdc, dev.description.c_str(), -1, &textRc,
+                        // Line 1: Primary Description
+                        SetBkMode(hdc, TRANSPARENT);
+                        HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
+                        SetTextColor(hdc, selected ? RGB(255, 255, 255) : t.palette.text);
+
+                        RECT titleRc = { textX, cardRc.top + 8, textX + textW, cardRc.top + 26 };
+                        DrawTextW(hdc, dev.description.c_str(), -1, &titleRc,
                                   DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                        // Line 2: Monospace Telemetry & Version Transition
+                        SelectObject(hdc, t.fontMono);
+                        SetTextColor(hdc, selected ? RGB(220, 235, 255) : t.palette.textSecondary);
+
+                        std::wstring subStr = dev.installedVersion.empty() ? L"No Driver Installed" : (L"Installed: v" + dev.installedVersion);
+                        if (!dev.installedInf.empty()) {
+                            subStr += L" (" + dev.installedInf + L")";
+                        }
+                        RECT subLineRc = { textX, cardRc.top + 28, textX + textW, cardRc.top + 46 };
+                        DrawTextW(hdc, subStr.c_str(), -1, &subLineRc,
+                                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                        // Inline Mini Progress Bar when installing
+                        if (prog.state == ItemInstallState::Downloading) {
+                            RECT progRc = { textX, cardRc.bottom - 6, cardRc.right - 14, cardRc.bottom - 3 };
+                            Theme::DrawTelemetryProgressBar(hdc, progRc, prog.percent, t.palette.accent, t.palette.surfaceHover);
+                        }
+
                         SelectObject(hdc, oldFont);
                         return CDRF_SKIPDEFAULT;
                     }
 
                     if (subItem == COL_STATUS) {
-                        RECT pillRc = subRc;
-                        pillRc.left += 10;
-                        pillRc.right -= 10;
-                        pillRc.top += 8;
-                        pillRc.bottom -= 8;
+                        RECT pillRc = cardRc;
+                        pillRc.left += 8;
+                        pillRc.right -= 8;
+                        pillRc.top += 12;
+                        pillRc.bottom -= 12;
 
                         if (prog.state == ItemInstallState::Downloading) {
                             Theme::DrawTelemetryProgressBar(hdc, pillRc, prog.percent, t.palette.accent, t.palette.surfaceRaised);
@@ -462,36 +471,36 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                             DrawTextW(hdc, pctStr.c_str(), -1, &pillRc, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
                             SelectObject(hdc, oldFont);
                         } else if (prog.state == ItemInstallState::Queued) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Staged in Queue", t.palette.surfaceRaised, t.palette.textSecondary, 0);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"In Install Queue", t.palette.surfaceRaised, t.palette.textSecondary, t.palette.border, 0);
                         } else if (prog.state == ItemInstallState::Installing) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Installing Node...", t.palette.accentLight, t.palette.accent, 1);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Staging INF...", t.palette.accentLight, t.palette.accent, t.palette.accent, 1);
                         } else if (prog.state == ItemInstallState::Verifying) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Verifying Store...", t.palette.infoBg, t.palette.info, 1);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Verifying Store", t.palette.infoBg, t.palette.info, t.palette.info, 1);
                         } else if (prog.state == ItemInstallState::Installed) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Installed (Active)", t.palette.successBg, t.palette.success, 1);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Installed (Active)", t.palette.successBg, t.palette.success, t.palette.success, 1);
                         } else if (prog.state == ItemInstallState::PendingRestart) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Reboot Pending", t.palette.warningBg, t.palette.warning, 1);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Reboot Required", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
                         } else if (prog.state == ItemInstallState::Failed) {
-                            Theme::DrawSignalBadge(hdc, pillRc, L"Install Fault", t.palette.errorBg, t.palette.error, 1);
+                            Theme::DrawUnigramPill(hdc, pillRc, L"Install Failed", t.palette.errorBg, t.palette.error, t.palette.error, 1);
                         } else {
                             switch (dev.state) {
                                 case Hw::DriverState::PendingRestart:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Reboot Pending", t.palette.warningBg, t.palette.warning, 1);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Reboot Pending", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
                                     break;
                                 case Hw::DriverState::Ok:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Verified Current", t.palette.successBg, t.palette.success, 1);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Up to Date", t.palette.successBg, t.palette.success, t.palette.success, 1);
                                     break;
                                 case Hw::DriverState::Missing:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Driver Missing", t.palette.warningBg, t.palette.warning, 1);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Missing Driver", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
                                     break;
                                 case Hw::DriverState::Outdated:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Update Available", t.palette.accentLight, t.palette.accent, 1);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Update Ready", t.palette.accentLight, t.palette.accent, t.palette.accent, 1);
                                     break;
                                 case Hw::DriverState::Problem:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Hardware Fault", t.palette.errorBg, t.palette.error, 1);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Hardware Code 28", t.palette.errorBg, t.palette.error, t.palette.error, 1);
                                     break;
                                 case Hw::DriverState::Unsigned:
-                                    Theme::DrawSignalBadge(hdc, pillRc, L"Unsigned Driver", t.palette.surfaceRaised, t.palette.textSecondary, 0);
+                                    Theme::DrawUnigramPill(hdc, pillRc, L"Unsigned INF", t.palette.surfaceRaised, t.palette.textSecondary, t.palette.border, 0);
                                     break;
                             }
                         }
@@ -499,11 +508,11 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                     }
 
                     if (subItem == COL_INSTALLED) {
-                        RECT textRc = subRc;
-                        textRc.left += 8;
-                        textRc.right -= 8;
+                        RECT textRc = cardRc;
+                        textRc.left += 10;
+                        textRc.right -= 10;
                         HGDIOBJ oldFont = SelectObject(hdc, t.fontMono);
-                        SetTextColor(hdc, selected ? t.palette.selectionText : t.palette.textSecondary);
+                        SetTextColor(hdc, selected ? RGB(240, 248, 255) : t.palette.textSecondary);
                         const wchar_t* txt = dev.installedVersion.empty() ? L"(none)" : dev.installedVersion.c_str();
                         DrawTextW(hdc, txt, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         SelectObject(hdc, oldFont);
@@ -511,15 +520,15 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                     }
 
                     if (subItem == COL_AVAILABLE) {
-                        RECT textRc = subRc;
-                        textRc.left += 8;
-                        textRc.right -= 8;
+                        RECT textRc = cardRc;
+                        textRc.left += 10;
+                        textRc.right -= 10;
                         HGDIOBJ oldFont = SelectObject(hdc, t.fontMono);
                         if (dev.state == Hw::DriverState::Outdated || dev.state == Hw::DriverState::Missing) {
                             SetTextColor(hdc, t.palette.accent);
-                            DrawTextW(hdc, L"Candidate Ready", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+                            DrawTextW(hdc, L"Match Available", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         } else {
-                            SetTextColor(hdc, selected ? t.palette.selectionText : t.palette.textSecondary);
+                            SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
                             DrawTextW(hdc, L"—", -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         }
                         SelectObject(hdc, oldFont);
@@ -527,12 +536,12 @@ LRESULT DeviceList::HandleNotify(HWND hwnd, NMHDR* pnm) {
                     }
 
                     if (subItem == COL_SOURCE) {
-                        RECT textRc = subRc;
-                        textRc.left += 8;
-                        textRc.right -= 8;
+                        RECT textRc = cardRc;
+                        textRc.left += 10;
+                        textRc.right -= 10;
                         HGDIOBJ oldFont = SelectObject(hdc, t.fontSmall);
-                        SetTextColor(hdc, selected ? t.palette.selectionText : t.palette.textSecondary);
-                        const wchar_t* txt = dev.installedInf.empty() ? L"Pack Repository" : L"Driver Store";
+                        SetTextColor(hdc, selected ? RGB(200, 220, 245) : t.palette.textSecondary);
+                        const wchar_t* txt = dev.installedInf.empty() ? L"Local Driver Pack" : L"Driver Store";
                         DrawTextW(hdc, txt, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
                         SelectObject(hdc, oldFont);
                         return CDRF_SKIPDEFAULT;

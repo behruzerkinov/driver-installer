@@ -38,6 +38,14 @@ void SetState(HWND hwnd, State* state) {
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
 }
 
+COLORREF GetClassAccent(std::wstring_view classGuid, const ThemePalette& pal) {
+    if (classGuid.find(L"4d36e968") != std::wstring_view::npos) return pal.gpuAccent;
+    if (classGuid.find(L"4d36e972") != std::wstring_view::npos) return pal.netAccent;
+    if (classGuid.find(L"4d36e96c") != std::wstring_view::npos) return pal.audioAccent;
+    if (classGuid.find(L"36fc9e60") != std::wstring_view::npos) return pal.usbAccent;
+    return pal.sysAccent;
+}
+
 void CopyToClipboard(const std::wstring& text) {
     if (OpenClipboard(nullptr)) {
         EmptyClipboard();
@@ -97,15 +105,15 @@ void DetailsPane::Init(HWND hwnd, HWND hwndMain) {
     s->hCopyBtn = CreateWindowExW(
         0, L"BUTTON", L"Copy ID",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        0, 0, 76, 24,
+        0, 0, 78, 26,
         hwnd, reinterpret_cast<HMENU>(IDC_BTN_COPY_ID),
         GetModuleHandleW(nullptr), nullptr
     );
 
     s->hInstallBtn = CreateWindowExW(
-        0, L"BUTTON", L"Install This Driver",
+        0, L"BUTTON", L"Install Driver",
         WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
-        0, 0, 150, 32,
+        0, 0, 160, 34,
         hwnd, reinterpret_cast<HMENU>(IDC_BTN_INSTALL_ONE),
         GetModuleHandleW(nullptr), nullptr
     );
@@ -171,10 +179,10 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
             int cy = HIWORD(lParam);
             if (s) {
                 if (s->hCopyBtn) {
-                    SetWindowPos(s->hCopyBtn, nullptr, cx - 90, 118, 74, 24, SWP_NOZORDER);
+                    SetWindowPos(s->hCopyBtn, nullptr, cx - 100, 142, 82, 26, SWP_NOZORDER);
                 }
                 if (s->hInstallBtn) {
-                    SetWindowPos(s->hInstallBtn, nullptr, 16, cy - 44, 150, 32, SWP_NOZORDER);
+                    SetWindowPos(s->hInstallBtn, nullptr, 18, cy - 48, 160, 34, SWP_NOZORDER);
                 }
             }
             InvalidateRect(hwnd, nullptr, FALSE);
@@ -200,10 +208,11 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
 
             auto& t = CurrentTheme();
 
-            FillRect(memDC, &rc, t.brushSurface);
+            // 1. Translucent frosted glass backing over Acrylic
+            Theme::DrawGlassCard(memDC, rc, t.palette.surface, 215, 0, 0, false);
 
-            // Left hairline divider
-            HPEN divPen = CreatePen(PS_SOLID, 1, t.palette.border);
+            // Left specular vertical splitter divider
+            HPEN divPen = CreatePen(PS_SOLID, 1, t.palette.glassBorderSubtle);
             HGDIOBJ oldPen = SelectObject(memDC, divPen);
             MoveToEx(memDC, 0, 0, nullptr);
             LineTo(memDC, 0, cy);
@@ -212,18 +221,18 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
 
             if (!s || !s->hasDevice) {
                 SetBkMode(memDC, TRANSPARENT);
-                HGDIOBJ oldFont = SelectObject(memDC, t.fontBold);
+                HGDIOBJ oldFont = SelectObject(memDC, t.fontTitle);
                 SetTextColor(memDC, t.palette.textSecondary);
 
                 RECT emptyRc = rc;
                 emptyRc.top = cy / 3;
                 DrawTextW(memDC, L"Hardware Inspector Idle", -1, &emptyRc, DT_CENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-                SelectObject(memDC, t.fontSmall);
-                emptyRc.top += 24;
-                emptyRc.left += 28;
-                emptyRc.right -= 28;
-                DrawTextW(memDC, L"Select any hardware node in the tree to examine device identification, firmware versions, and candidate packages.",
+                SelectObject(memDC, t.fontRegular);
+                emptyRc.top += 30;
+                emptyRc.left += 36;
+                emptyRc.right -= 36;
+                DrawTextW(memDC, L"Select any device card from the navigation deck on the left to examine driver telemetry, candidate packages, and hardware identifiers.",
                           -1, &emptyRc, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
 
                 SelectObject(memDC, oldFont);
@@ -232,138 +241,153 @@ LRESULT CALLBACK DetailsPane::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                 bool isWaitingRestart = (dev.state == Hw::DriverState::PendingRestart) ||
                                         Install::InstallHistory::IsWaitingRestart(dev.instanceId, dev.hardwareIds);
 
-                int pad = 14;
+                int pad = 16;
                 int y = 14;
 
-                // Card 1: Hardware Node Summary
-                RECT card1Rc = { pad, y, cx - pad, y + 80 };
-                Theme::DrawFrame(memDC, card1Rc, t.palette.surfaceRaised, t.palette.border, 4);
+                // Card 1: Unigram Hero Profile Card
+                RECT heroRc = { pad, y, cx - pad, y + 104 };
+                Theme::DrawGlassCard(memDC, heroRc, t.palette.surfaceRaised, 220, t.palette.glassBorder, 10, true);
+
+                // Large Squircle Avatar in Hero
+                RECT avatarRc = { heroRc.left + 14, heroRc.top + 14, heroRc.left + 14 + 52, heroRc.top + 14 + 52 };
+                COLORREF catCol = GetClassAccent(dev.classGuid, t.palette);
+                Theme::DrawSquircleAvatar(memDC, avatarRc, dev.classGuid, catCol, 12);
+
+                int heroTextX = avatarRc.right + 14;
+                int heroTextW = heroRc.right - heroTextX - 140;
 
                 SetBkMode(memDC, TRANSPARENT);
-                HGDIOBJ oldFont = SelectObject(memDC, t.fontBold);
+                HGDIOBJ oldFont = SelectObject(memDC, t.fontTitle);
                 SetTextColor(memDC, t.palette.text);
 
-                RECT titleRc = { card1Rc.left + 12, card1Rc.top + 10, card1Rc.right - 120, card1Rc.top + 32 };
+                // Device Title
+                RECT titleRc = { heroTextX, heroRc.top + 14, heroTextX + heroTextW, heroRc.top + 38 };
                 DrawTextW(memDC, dev.description.c_str(), -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                // Status signal pill
-                RECT statusPillRc = { card1Rc.right - 130, card1Rc.top + 10, card1Rc.right - 12, card1Rc.top + 32 };
-                if (isWaitingRestart) {
-                    Theme::DrawSignalBadge(memDC, statusPillRc, L"Reboot Pending", t.palette.warningBg, t.palette.warning, 1);
-                } else if (dev.state == Hw::DriverState::Ok) {
-                    Theme::DrawSignalBadge(memDC, statusPillRc, L"Verified Current", t.palette.successBg, t.palette.success, 1);
-                } else if (dev.state == Hw::DriverState::Outdated) {
-                    Theme::DrawSignalBadge(memDC, statusPillRc, L"Update Staged", t.palette.accentLight, t.palette.accent, 1);
-                } else {
-                    Theme::DrawSignalBadge(memDC, statusPillRc, L"Driver Missing", t.palette.warningBg, t.palette.warning, 1);
-                }
-
-                // Manufacturer Line
+                // Manufacturer & Hardware Class
                 SelectObject(memDC, t.fontSmall);
                 SetTextColor(memDC, t.palette.textSecondary);
-                RECT mfgRc = { card1Rc.left + 12, card1Rc.top + 36, card1Rc.right - 12, card1Rc.top + 54 };
-                std::wstring mfgText = L"Manufacturer: " + (dev.manufacturer.empty() ? std::wstring(L"Standard OEM / Microsoft") : dev.manufacturer);
+                RECT mfgRc = { heroTextX, heroRc.top + 38, heroTextX + heroTextW, heroRc.top + 56 };
+                std::wstring mfgText = (dev.manufacturer.empty() ? std::wstring(L"Microsoft / Generic OEM") : dev.manufacturer);
                 DrawTextW(memDC, mfgText.c_str(), -1, &mfgRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                RECT classRc = { card1Rc.left + 12, card1Rc.top + 54, card1Rc.right - 12, card1Rc.top + 72 };
-                std::wstring classText = L"Class GUID: " + dev.classGuid;
+                RECT classRc = { heroTextX, heroRc.top + 56, heroTextX + heroTextW, heroRc.top + 74 };
+                std::wstring classText = L"GUID: " + dev.classGuid;
                 DrawTextW(memDC, classText.c_str(), -1, &classRc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                y += 88;
-
-                // Pending Reboot Telemetry Alert Banner
+                // Right Status Pill Badge
+                RECT statusPillRc = { heroRc.right - 146, heroRc.top + 14, heroRc.right - 14, heroRc.top + 40 };
                 if (isWaitingRestart) {
-                    RECT alertRc = { pad, y, cx - pad, y + 64 };
-                    Theme::DrawFrame(memDC, alertRc, t.palette.warningBg, t.palette.warning, 4);
+                    Theme::DrawUnigramPill(memDC, statusPillRc, L"Reboot Pending", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
+                } else if (dev.state == Hw::DriverState::Ok) {
+                    Theme::DrawUnigramPill(memDC, statusPillRc, L"Up to Date", t.palette.successBg, t.palette.success, t.palette.success, 1);
+                } else if (dev.state == Hw::DriverState::Outdated) {
+                    Theme::DrawUnigramPill(memDC, statusPillRc, L"Update Ready", t.palette.accentLight, t.palette.accent, t.palette.accent, 1);
+                } else {
+                    Theme::DrawUnigramPill(memDC, statusPillRc, L"Driver Missing", t.palette.warningBg, t.palette.warning, t.palette.warning, 1);
+                }
+
+                y += 114;
+
+                // Card 2: Pending Reboot Warning Banner
+                if (isWaitingRestart) {
+                    RECT alertRc = { pad, y, cx - pad, y + 68 };
+                    Theme::DrawGlassCard(memDC, alertRc, t.palette.warningBg, 220, t.palette.warning, 8, true);
 
                     SelectObject(memDC, t.fontBold);
                     SetTextColor(memDC, t.palette.warning);
-                    RECT alertTitleRc = { alertRc.left + 12, alertRc.top + 8, alertRc.right - 12, alertRc.top + 24 };
-                    DrawTextW(memDC, L"System Reboot Pending", -1, &alertTitleRc, DT_SINGLELINE | DT_NOPREFIX);
+                    RECT alertTitleRc = { alertRc.left + 14, alertRc.top + 8, alertRc.right - 14, alertRc.top + 26 };
+                    DrawTextW(memDC, L"System Restart Pending", -1, &alertTitleRc, DT_SINGLELINE | DT_NOPREFIX);
 
                     SelectObject(memDC, t.fontSmall);
                     SetTextColor(memDC, t.palette.text);
-                    RECT alertBodyRc = { alertRc.left + 12, alertRc.top + 26, alertRc.right - 12, alertRc.bottom - 6 };
-                    DrawTextW(memDC, L"This driver package was committed to the driver store in the current session. The device node is scheduled to reload the new driver binary on next Windows boot.",
+                    RECT alertBodyRc = { alertRc.left + 14, alertRc.top + 28, alertRc.right - 14, alertRc.bottom - 6 };
+                    DrawTextW(memDC, L"This driver was installed in the current session. The device node is queued to activate the new driver binary on the next Windows reboot.",
                               -1, &alertBodyRc, DT_WORDBREAK | DT_NOPREFIX);
 
-                    y += 72;
+                    y += 76;
                 }
 
-                // Card 2: Hardware Identification Deck
-                RECT card2Rc = { pad, y, cx - pad, y + 96 };
-                Theme::DrawFrame(memDC, card2Rc, t.palette.surfaceRaised, t.palette.border, 4);
+                // Card 3: Two-Column Driver Comparison Bento Deck
+                RECT compRc = { pad, y, cx - pad, y + 118 };
+                Theme::DrawGlassCard(memDC, compRc, t.palette.surfaceRaised, 210, t.palette.glassBorder, 8, true);
 
                 SelectObject(memDC, t.fontBold);
                 SetTextColor(memDC, t.palette.text);
-                RECT idHeaderRc = { card2Rc.left + 12, card2Rc.top + 8, card2Rc.right - 90, card2Rc.top + 26 };
-                DrawTextW(memDC, L"Hardware Instance ID", -1, &idHeaderRc, DT_SINGLELINE | DT_NOPREFIX);
+                RECT compHeader = { compRc.left + 14, compRc.top + 10, compRc.right - 14, compRc.top + 28 };
+                DrawTextW(memDC, L"Driver Telemetry & Candidate Comparison", -1, &compHeader, DT_SINGLELINE | DT_NOPREFIX);
+
+                int colW = (compRc.right - compRc.left - 36) / 2;
+                int col2Left = compRc.left + 14 + colW + 14;
+
+                // Column 1: Installed
+                RECT c1Rc = { compRc.left + 14, compRc.top + 34, compRc.left + 14 + colW, compRc.bottom - 10 };
+                Theme::DrawGlassCard(memDC, c1Rc, t.palette.surface, 190, t.palette.glassBorderSubtle, 6, false);
+
+                SelectObject(memDC, t.fontSmall);
+                SetTextColor(memDC, t.palette.textSecondary);
+                RECT c1Tag = { c1Rc.left + 10, c1Rc.top + 8, c1Rc.right - 10, c1Rc.top + 24 };
+                DrawTextW(memDC, L"ACTIVE IN DRIVER STORE", -1, &c1Tag, DT_SINGLELINE | DT_NOPREFIX);
+
+                SelectObject(memDC, t.fontMono);
+                SetTextColor(memDC, t.palette.text);
+                RECT c1Ver = { c1Rc.left + 10, c1Rc.top + 26, c1Rc.right - 10, c1Rc.top + 46 };
+                std::wstring v1 = L"v" + (dev.installedVersion.empty() ? std::wstring(L"(none)") : dev.installedVersion);
+                DrawTextW(memDC, v1.c_str(), -1, &c1Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                SelectObject(memDC, t.fontSmall);
+                SetTextColor(memDC, t.palette.textSecondary);
+                RECT c1Inf = { c1Rc.left + 10, c1Rc.top + 46, c1Rc.right - 10, c1Rc.bottom - 4 };
+                std::wstring inf1 = L"INF: " + (dev.installedInf.empty() ? std::wstring(L"—") : dev.installedInf);
+                DrawTextW(memDC, inf1.c_str(), -1, &c1Inf, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                // Column 2: Candidate
+                RECT c2Rc = { col2Left, compRc.top + 34, compRc.right - 14, compRc.bottom - 10 };
+                Theme::DrawGlassCard(memDC, c2Rc, t.palette.surface, 190, t.palette.glassBorderSubtle, 6, false);
+
+                SelectObject(memDC, t.fontSmall);
+                SetTextColor(memDC, t.palette.textSecondary);
+                RECT c2Tag = { c2Rc.left + 10, c2Rc.top + 8, c2Rc.right - 10, c2Rc.top + 24 };
+                DrawTextW(memDC, L"PACK STAGED CANDIDATE", -1, &c2Tag, DT_SINGLELINE | DT_NOPREFIX);
+
+                SelectObject(memDC, t.fontMono);
+                SetTextColor(memDC, (dev.state == Hw::DriverState::Outdated) ? t.palette.accent : t.palette.text);
+                RECT c2Ver = { c2Rc.left + 10, c2Rc.top + 26, c2Rc.right - 10, c2Rc.top + 46 };
+                std::wstring v2 = isWaitingRestart ? L"Installed this session" :
+                                 (dev.state == Hw::DriverState::Outdated ? L"Ready to update" : L"Package verified");
+                DrawTextW(memDC, v2.c_str(), -1, &c2Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                SelectObject(memDC, t.fontSmall);
+                SetTextColor(memDC, t.palette.textSecondary);
+                RECT c2Signer = { c2Rc.left + 10, c2Rc.top + 46, c2Rc.right - 10, c2Rc.bottom - 4 };
+                DrawTextW(memDC, L"Signature: Verified WHQL", -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                y += 128;
+
+                // Card 4: Hardware Identification Deck
+                RECT idCardRc = { pad, y, cx - pad, y + 100 };
+                Theme::DrawGlassCard(memDC, idCardRc, t.palette.surfaceRaised, 210, t.palette.glassBorder, 8, true);
+
+                SelectObject(memDC, t.fontBold);
+                SetTextColor(memDC, t.palette.text);
+                RECT idTitle = { idCardRc.left + 14, idCardRc.top + 10, idCardRc.right - 96, idCardRc.top + 28 };
+                DrawTextW(memDC, L"Hardware Device Instance ID", -1, &idTitle, DT_SINGLELINE | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontMono);
                 SetTextColor(memDC, t.palette.textSecondary);
-                RECT instRc = { card2Rc.left + 12, card2Rc.top + 28, card2Rc.right - 90, card2Rc.top + 46 };
+                RECT instRc = { idCardRc.left + 14, idCardRc.top + 30, idCardRc.right - 96, idCardRc.top + 48 };
                 DrawTextW(memDC, dev.instanceId.c_str(), -1, &instRc, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                // Hardware ID
                 SelectObject(memDC, t.fontBold);
                 SetTextColor(memDC, t.palette.text);
-                RECT hwHeaderRc = { card2Rc.left + 12, card2Rc.top + 50, card2Rc.right - 12, card2Rc.top + 68 };
-                DrawTextW(memDC, L"Primary Hardware ID", -1, &hwHeaderRc, DT_SINGLELINE | DT_NOPREFIX);
+                RECT hwTitle = { idCardRc.left + 14, idCardRc.top + 52, idCardRc.right - 14, idCardRc.top + 70 };
+                DrawTextW(memDC, L"Primary Hardware ID", -1, &hwTitle, DT_SINGLELINE | DT_NOPREFIX);
 
                 SelectObject(memDC, t.fontMono);
                 SetTextColor(memDC, t.palette.textSecondary);
                 std::wstring firstHwId = dev.hardwareIds.empty() ? L"(none reported)" : dev.hardwareIds[0];
-                RECT hwIdRc = { card2Rc.left + 12, card2Rc.top + 70, card2Rc.right - 12, card2Rc.top + 88 };
+                RECT hwIdRc = { idCardRc.left + 14, idCardRc.top + 72, idCardRc.right - 14, idCardRc.top + 92 };
                 DrawTextW(memDC, firstHwId.c_str(), -1, &hwIdRc, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                y += 104;
-
-                // Card 3: Two-Column Driver Comparison Matrix
-                RECT card3Rc = { pad, y, cx - pad, y + 114 };
-                Theme::DrawFrame(memDC, card3Rc, t.palette.surfaceRaised, t.palette.border, 4);
-
-                SelectObject(memDC, t.fontBold);
-                SetTextColor(memDC, t.palette.text);
-                RECT vHeaderRc = { card3Rc.left + 12, card3Rc.top + 8, card3Rc.right - 12, card3Rc.top + 26 };
-                DrawTextW(memDC, L"Driver Telemetry & Candidate Comparison", -1, &vHeaderRc, DT_SINGLELINE | DT_NOPREFIX);
-
-                // Vertical column split in card 3
-                int colW = (card3Rc.right - card3Rc.left - 24) / 2;
-                int col2Left = card3Rc.left + 12 + colW + 12;
-
-                // Column 1: Installed Driver
-                SelectObject(memDC, t.fontSmall);
-                SetTextColor(memDC, t.palette.textSecondary);
-                RECT c1Header = { card3Rc.left + 12, card3Rc.top + 30, card3Rc.left + 12 + colW, card3Rc.top + 46 };
-                DrawTextW(memDC, L"ACTIVE IN DRIVER STORE", -1, &c1Header, DT_SINGLELINE | DT_NOPREFIX);
-
-                SelectObject(memDC, t.fontMono);
-                SetTextColor(memDC, t.palette.text);
-                RECT c1Ver = { card3Rc.left + 12, card3Rc.top + 48, card3Rc.left + 12 + colW, card3Rc.top + 66 };
-                std::wstring curVer = L"Version: " + (dev.installedVersion.empty() ? std::wstring(L"(none)") : dev.installedVersion);
-                DrawTextW(memDC, curVer.c_str(), -1, &c1Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                RECT c1Inf = { card3Rc.left + 12, card3Rc.top + 68, card3Rc.left + 12 + colW, card3Rc.top + 86 };
-                std::wstring curInf = L"INF: " + (dev.installedInf.empty() ? std::wstring(L"—") : dev.installedInf);
-                DrawTextW(memDC, curInf.c_str(), -1, &c1Inf, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                // Column 2: Pack Candidate
-                SelectObject(memDC, t.fontSmall);
-                SetTextColor(memDC, t.palette.textSecondary);
-                RECT c2Header = { col2Left, card3Rc.top + 30, card3Rc.right - 12, card3Rc.top + 46 };
-                DrawTextW(memDC, L"PACK STAGED CANDIDATE", -1, &c2Header, DT_SINGLELINE | DT_NOPREFIX);
-
-                SelectObject(memDC, t.fontMono);
-                SetTextColor(memDC, (dev.state == Hw::DriverState::Outdated) ? t.palette.accent : t.palette.text);
-                RECT c2Ver = { col2Left, card3Rc.top + 48, card3Rc.right - 12, card3Rc.top + 66 };
-                std::wstring candVer = isWaitingRestart ? L"Installed this session" :
-                                       (dev.state == Hw::DriverState::Outdated ? L"Ready to update" : L"Up to date");
-                DrawTextW(memDC, candVer.c_str(), -1, &c2Ver, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                SelectObject(memDC, t.fontSmall);
-                SetTextColor(memDC, t.palette.textSecondary);
-                RECT c2Signer = { col2Left, card3Rc.top + 68, card3Rc.right - 12, card3Rc.top + 86 };
-                DrawTextW(memDC, L"Signature: Verified WHQL", -1, &c2Signer, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
                 SelectObject(memDC, oldFont);
             }

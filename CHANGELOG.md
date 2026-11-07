@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-11-08
+
+### Added
+- **Unigram Windows Native Blurry Aero & Acrylic UI**:
+  - Hardware-accelerated Acrylic frosted glass blur backdrop via DWM (`DWMWA_SYSTEMBACKDROP_TYPE = 3` on Windows 11 22621+).
+  - Legacy Windows 10 Acrylic support via `SetWindowCompositionAttribute` (`ACCENT_ENABLE_ACRYLICBLURBEHIND`).
+  - Full-bleed borderless glass extension into the client area via `DwmExtendFrameIntoClientArea`.
+  - Translucent glass cards with specular highlight borders and soft rounded corners (`Theme::DrawGlassCard`).
+- **Telegram/Unigram Chat-Style Master Device Feed**:
+  - Expanded 58px card row height with generous breathing room and information hierarchy.
+  - Vibrant squircle avatars with category-specific glows (Cobalt for Display, Purple for Audio, Emerald for Network, Amber for USB, Cyan for System).
+  - Two-line typography pairing bold device descriptions with monospace version and INF telemetry.
+  - Floating Unigram-style status pill badges with pulsing signal indicators.
+  - Unigram selection pill with 3px vertical accent indicator bar on the active card.
+- **Translucent Hardware Inspector Deck**:
+  - Unigram profile hero card with large glowing squircle avatar, manufacturer, and class GUID.
+  - Two-column comparative telemetry bento grid (`Installed Store` vs `Staged Candidate`).
+  - Specular frosted glass action pill buttons ("Install Driver", "Copy ID").
+- **Aero Command Deck & Floating Toolbar**:
+  - Integrated titlebar with glowing app squircle emblem, frosted version pill (`v1.3.0`), and telemetry subtitle.
+  - Owner-drawn circular frosted glass buttons for theme switching and settings.
+  - Unigram aero pill buttons for hardware scanning, batch selection, and installation.
+
+---
+
 ## [1.2.0] - 2026-11-08
 
 ### Added

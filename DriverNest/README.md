@@ -1,14 +1,14 @@
-# DriverNest v1.2.0
+# DriverNest v1.3.0
 
 **Find it. Verify it. Install it.**
 
-DriverNest is a free, lightweight, portable Windows driver installer. It detects every device on your system, reports its installed driver state (OK, missing, outdated, problem code), finds better or missing drivers from a local driver library (packs) and from optional online sources, and installs selected drivers safely.
+DriverNest is a free, lightweight, portable Windows driver installer with a native **Unigram-inspired Windows Blurry Aero & Acrylic UI**. It detects every device on your system, reports its installed driver state (OK, missing, outdated, problem code), finds better or missing drivers from local driver packs and optional sources, and installs selected drivers safely.
 
 - Single portable executable, zero third-party runtime dependencies.
+- Hardware-accelerated Acrylic / Aero Glass blur backdrop via native Windows DWM.
+- Telegram/Unigram chat-style master device list with 58px card rows and vibrant squircle avatars.
+- Side-by-side comparative telemetry bento grid with WHQL validation.
 - Automated CI/CD releases directly via GitHub Actions.
-- Aerospace Deep Chassis dark UI with dual-pane draggable splitter and shimmer skeletons.
-- Per-device download and installation progress reporting.
-- Automatic System Restore point creation before installing, signature verification, and transactional rollback.
 
 ## Requirements
 

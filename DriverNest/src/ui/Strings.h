@@ -13,7 +13,7 @@ namespace DriverNest::Strings {
 // --- Application identity ---
 inline constexpr std::wstring_view AppName        = L"DriverNest";
 inline constexpr std::wstring_view AppTagline     = L"Find it. Verify it. Install it.";
-inline constexpr std::wstring_view AppVersion     = L"1.2.0";
+inline constexpr std::wstring_view AppVersion     = L"1.3.0";
 
 // --- Main window ---
 inline constexpr std::wstring_view WindowTitle    = L"DriverNest";

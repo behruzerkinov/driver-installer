@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(DriverNest
-    VERSION 1.2.0
+    VERSION 1.3.0
     DESCRIPTION "Free, lightweight, portable Windows driver installer"
     LANGUAGES CXX
 )

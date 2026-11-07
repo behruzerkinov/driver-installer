@@ -6,8 +6,9 @@
 namespace DriverNest::Ui {
 
 // ---------------------------------------------------------------------------
-// Precision Instrumentation Color Palette
-// Calibrated for deep contrast, zero visual noise, and aerospace-grade clarity.
+// Unigram Aero Glass & Fluent Precision Color Palette
+// Calibrated for native Windows blurry Aero / Acrylic glass translucency,
+// rich squircle avatars, and specular highlights.
 // All values are native GDI COLORREFs: RGB(r, g, b).
 // ---------------------------------------------------------------------------
 struct ThemePalette {
@@ -19,7 +20,7 @@ struct ThemePalette {
     COLORREF text;              // Primary readout text (#F1F5F9 / #0F172A)
     COLORREF textSecondary;     // Telemetry & muted metadata (#94A3B8 / #64748B)
     COLORREF textPlaceholder;   // Placeholder search cue
-    COLORREF accent;            // Precision cobalt electric blue (#2563EB)
+    COLORREF accent;            // Fluent electric blue (#0078D4 / #2563EB)
     COLORREF accentHover;       // Hover state on accent
     COLORREF accentPressed;     // Pressed state on accent
     COLORREF accentLight;       // Signal badge background for updates
@@ -31,10 +32,25 @@ struct ThemePalette {
     COLORREF errorBg;           // Fault badge background
     COLORREF info;              // Telemetry cyan (#0284C7)
     COLORREF infoBg;            // Info badge background
-    COLORREF border;            // Structural rule lines (#2A303C / #E2E8F0)
+    COLORREF border;            // Structural rule lines (#2F3646 / #E2E8F0)
     COLORREF borderFocus;       // Focused element border
     COLORREF selection;         // Row selection highlight
     COLORREF selectionText;     // Selected row primary text
+
+    // Aero Glass Translucency Tokens
+    COLORREF glassCard;         // Translucent card fill
+    COLORREF glassCardHover;    // Hover translucent fill
+    COLORREF glassBorder;       // Specular glass hairline border
+    COLORREF glassBorderSubtle; // Subtle card border
+    COLORREF glassHighlight;    // Specular top highlight
+
+    // Hardware Category Vibrant Accents (for Unigram Squircles)
+    COLORREF gpuAccent;         // Display / GPU (#3B82F6 Cobalt)
+    COLORREF audioAccent;       // Audio / Sound (#A855F7 Purple)
+    COLORREF netAccent;         // Network / Wi-Fi (#10B981 Emerald)
+    COLORREF usbAccent;         // USB / Storage (#F59E0B Amber)
+    COLORREF sysAccent;         // Chipset / System (#06B6D4 Cyan)
+
     COLORREF white;
     COLORREF black;
 };
@@ -51,12 +67,12 @@ struct Theme {
     ThemePalette palette{};
 
     // Typography
-    HFONT fontTitle = nullptr;     // 13pt bold - Application header
+    HFONT fontTitle = nullptr;     // 14pt bold - Application header
     HFONT fontSubtitle = nullptr;  // 8.5pt regular - Tagline / category
-    HFONT fontBold = nullptr;      // 9pt semibold - Card headers / button labels
-    HFONT fontRegular = nullptr;   // 9pt regular - Primary device labels
-    HFONT fontSmall = nullptr;     // 8pt regular - Metadata & small labels
-    HFONT fontMono = nullptr;      // 8.5pt tabular - Versions, IDs, INF paths
+    HFONT fontBold = nullptr;      // 10pt semibold - Card headers / button labels
+    HFONT fontRegular = nullptr;   // 9.5pt regular - Primary device labels
+    HFONT fontSmall = nullptr;     // 8.5pt regular - Metadata & small labels
+    HFONT fontMono = nullptr;      // 9pt tabular - Versions, IDs, INF paths
 
     // Solid Brushes
     HBRUSH brushBackground = nullptr;
@@ -82,7 +98,11 @@ struct Theme {
 
     static COLORREF Blend(COLORREF c1, COLORREF c2, float t);
 
-    // Signature UI Drawing Primitives
+    // Signature Unigram Aero Glass Drawing Primitives
+    static void DrawGlassCard(HDC hdc, const RECT& rc, COLORREF bgCol, BYTE alpha, COLORREF borderCol, int radius = 8, bool specular = true);
+    static void DrawSquircleAvatar(HDC hdc, const RECT& rc, std::wstring_view classGuid, COLORREF accentCol, int radius = 10);
+    static void DrawUnigramPill(HDC hdc, const RECT& rc, std::wstring_view text, COLORREF bgCol, COLORREF textCol, COLORREF borderCol = 0, int dotType = 0);
+    static void DrawAeroButton(HDC hdc, const RECT& rc, std::wstring_view text, bool isSelected, bool isHover, bool isPrimary, bool isDisabled = false);
     static void DrawModernCheckbox(HDC hdc, int x, int y, int size, bool checked, bool hover, bool disabled = false);
     static void DrawSignalBadge(HDC hdc, const RECT& rc, std::wstring_view text, COLORREF bgCol, COLORREF textCol, int dotType = 0);
     static void DrawTelemetryProgressBar(HDC hdc, const RECT& rc, int percent, COLORREF barCol, COLORREF bgCol);

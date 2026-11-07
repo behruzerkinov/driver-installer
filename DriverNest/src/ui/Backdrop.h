@@ -4,24 +4,22 @@
 namespace DriverNest::Ui {
 
 // ---------------------------------------------------------------------------
-// Window backdrop support.
-//
-// Windows 11 (build 22000+): use DWMWA_SYSTEMBACKDROP_TYPE with Mica (value 2).
-// Windows 10: solid surface color via WM_ERASEBKGND painting and the theme
-// palette. Acrylic is not used per spec.
-//
-// The caller must ensure the window's background brush is null (or a solid
-// color) and that WM_SIZE/theme changes trigger a repaint.
+// Native Windows Acrylic & Aero Glass Backdrop Engine.
+// Supports:
+// - Windows 11 (22621+): DWMWA_SYSTEMBACKDROP_TYPE = 3 (DWMSBT_TRANSIENTWINDOW Acrylic)
+// - Windows 11 (22000): DWMWA_MICA_EFFECT (1029)
+// - Windows 10 (1709-22H2): SetWindowCompositionAttribute with ACCENT_ENABLE_ACRYLICBLURBEHIND
+// - Full-bleed DWM frame extension (DwmExtendFrameIntoClientArea)
 // ---------------------------------------------------------------------------
 struct Backdrop {
-    // Set the backdrop for a window. No-op on older builds.
+    // Apply Windows native blurry Acrylic Aero backdrop
     static void SetBackdrop(HWND hwnd, bool dark);
 
-    // Paint the backdrop in WM_ERASEBKGND for solid fallback.
-    // Returns TRUE if the background was handled.
+    // Paint the backdrop in WM_ERASEBKGND for translucent fallback
     static BOOL PaintSolidBackground(HWND hwnd, HDC hdc);
 
-    // Determine if Mica is available on this system.
+    // Capability queries
+    static bool AcrylicAvailable();
     static bool MicaAvailable();
 };
 

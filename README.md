@@ -1,4 +1,4 @@
-# DriverNest
+# DriverNest v1.3.0
 
 [![Build and Release](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/behruzerkinov/driver-installer/actions/workflows/build-and-release.yml)
 [![Latest Release](https://img.shields.io/github/v/release/behruzerkinov/driver-installer?color=blue&label=release)](https://github.com/behruzerkinov/driver-installer/releases)
@@ -12,21 +12,25 @@
 
 ## Overview
 
-**DriverNest** is a native Win32/C++20 utility engineered for hardware discovery, driver catalog matching, signature verification, and transactional installation. Designed around an industrial **Aerospace Deep Chassis** design system, DriverNest provides real-time hardware telemetry, per-device download and installation lifecycles, and rollback protection without third-party frameworks or runtime bloat.
+**DriverNest** is a native Win32/C++20 utility engineered for hardware discovery, driver catalog matching, signature verification, and transactional installation. Redesigned with an authentic **Unigram Windows Blurry Aero & Acrylic UI**, DriverNest combines hardware-accelerated DWM glass blur with translucent cards, rich squircle category avatars, real-time hardware telemetry, per-device download and installation lifecycles, and rollback protection without third-party frameworks or runtime bloat.
 
 ---
 
 ## Key Features
 
-* **High-Precision Industrial UI**:
-  * Bespoke low-fatigue dark chassis palette (`#0F1115` base, `#181B22` deck, `#2F3646` borders, `#2563EB` cobalt accent).
-  * Dual-font telemetry typography pairing `Segoe UI Variable` with monospace `Cascadia Code`.
-  * Shimmer scanline skeleton loaders during device tree interrogation.
-  * Draggable dual-pane splitter with real-time cursor feedback (`IDC_SIZEWE`) and grip pills.
-  * Custom GDI-rendered checkboxes with micro-hover interactions and emerald ticks.
+* **Unigram-Inspired Windows Blurry Aero & Acrylic UI**:
+  * Hardware-accelerated Acrylic / Aero Glass blur backdrop via DWM (`DWMWA_SYSTEMBACKDROP_TYPE = 3` on Windows 11 and `SetWindowCompositionAttribute` on Windows 10).
+  * Full-bleed borderless glass extension (`DwmExtendFrameIntoClientArea`).
+  * Translucent glass card containers with specular hairline borders and top-edge light catch lines (`Theme::DrawGlassCard`).
+  * Telegram/Unigram chat-style master device list with 58px card rows, vibrant squircle category avatars (Cobalt, Purple, Emerald, Amber, Cyan), and two-line typography hierarchy.
+  * Right-aligned floating status pill badges and Unigram-style active card selection pills with vertical accent indicator bars.
 * **Granular Install Lifecycle Telemetry**:
   * Device entries report explicit real-time states: `Waiting`, `Downloading (XX% / MB)`, `Installing`, `Verifying`, `Installed`, `Pending Restart`, and `Failed`.
   * Inline sub-progress bars and status signal indicators directly inside the device list rows.
+* **Hardware Inspector Deck (Right Pane)**:
+  * Hero device profile card with large glowing squircle avatar, manufacturer info, and class GUID.
+  * Side-by-side comparative telemetry bento grid comparing currently installed store drivers with staged candidate packages.
+  * Hardware identification deck with instant "Copy ID" action.
 * **Session Install Journal & Smart Rescan**:
   * Thread-safe session journal tracks staged INF files, version transitions, and reboot requirements.
   * Prevents cyclic driver re-installation loops by recognizing staged packages awaiting reboot.
@@ -34,8 +38,8 @@
   * Mandatory **"Select All" / "Deselect All"** toolbar action and `Ctrl+A` accelerator with dynamic counter badge.
   * Automated System Restore point creation before committing any batch installation.
 * **Automated CI/CD Releases**:
-  * Automated cloud builds via GitHub Actions on Windows runners.
-  * Releases, packaged archives (`DriverNest-vX.Y.Z-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
+  * Automated cloud builds via GitHub Actions on Windows runners (`windows-2022`).
+  * Releases, packaged archives (`DriverNest-1.3.0-windows-x64.zip`), and SHA-256 checksums are built and published automatically in the GitHub repository's **Releases** tab.
 
 ---
 

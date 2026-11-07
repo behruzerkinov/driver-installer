@@ -380,35 +380,34 @@ LRESULT MainWindow::OnPaint() {
 
     auto& t = CurrentTheme();
 
-    // Fill overall background
-    FillRect(memDC, &rc, t.brushBackground);
+    // 1. Translucent Deep Chassis Backing over Windows Native Acrylic Blur
+    Theme::DrawGlassCard(memDC, rc, t.palette.background, 205, 0, 0, false);
 
-    // 1. Header Bar (0 to headerHeight_)
+    // 2. Unigram Integrated TitleBar & Header (0 to headerHeight_)
     RECT headerRc = { 0, 0, cx, headerHeight_ };
-    FillRect(memDC, &headerRc, t.brushSurfaceRaised);
+    Theme::DrawGlassCard(memDC, headerRc, t.palette.surfaceRaised, 220, t.palette.glassBorderSubtle, 0, true);
 
-    // Header bottom line
-    HPEN borderPen = CreatePen(PS_SOLID, 1, t.palette.border);
+    // Header bottom specular line
+    HPEN borderPen = CreatePen(PS_SOLID, 1, t.palette.glassBorderSubtle);
     HGDIOBJ oldPen = SelectObject(memDC, borderPen);
     MoveToEx(memDC, 0, headerHeight_ - 1, nullptr);
     LineTo(memDC, cx, headerHeight_ - 1);
 
-    // App Logo Shield Vector Icon
+    // App Logo Squircle Icon (Unigram style)
     int iconX = 14;
-    int iconY = 12;
-    int iconW = 30;
-    int iconH = 30;
-    RECT iconRc = { iconX, iconY, iconX + iconW, iconY + iconH };
-    Theme::DrawFrame(memDC, iconRc, t.palette.accent, t.palette.accent, 4);
+    int iconY = 10;
+    int iconSize = 34;
+    RECT iconRc = { iconX, iconY, iconX + iconSize, iconY + iconSize };
+    Theme::DrawGlassCard(memDC, iconRc, t.palette.accent, 240, Theme::Blend(t.palette.accent, RGB(255, 255, 255), 0.4f), 10, true);
 
     // Inner shield symbol
     HPEN whitePen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
     SelectObject(memDC, whitePen);
     POINT shieldPts[4];
-    shieldPts[0] = { iconX + 7, iconY + 8 };
-    shieldPts[1] = { iconX + iconW - 7, iconY + 8 };
-    shieldPts[2] = { iconX + iconW / 2, iconY + iconH - 6 };
-    shieldPts[3] = { iconX + 7, iconY + 8 };
+    shieldPts[0] = { iconX + 8, iconY + 9 };
+    shieldPts[1] = { iconX + iconSize - 8, iconY + 9 };
+    shieldPts[2] = { iconX + iconSize / 2, iconY + iconSize - 7 };
+    shieldPts[3] = { iconX + 8, iconY + 9 };
     Polyline(memDC, shieldPts, 4);
     DeleteObject(whitePen);
 
@@ -416,42 +415,42 @@ LRESULT MainWindow::OnPaint() {
     SetBkMode(memDC, TRANSPARENT);
     HGDIOBJ oldFont = SelectObject(memDC, t.fontTitle);
     SetTextColor(memDC, t.palette.text);
-    RECT titleRc = { iconX + iconW + 12, 10, iconX + iconW + 140, 36 };
+    RECT titleRc = { iconX + iconSize + 12, 8, iconX + iconSize + 150, 32 };
     DrawTextW(memDC, Strings::AppName.data(), -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
 
     // Version Pill Tag "[vX.X.X]"
     std::wstring verTag = L"v" + std::wstring(Strings::AppVersion);
-    RECT verPillRc = { titleRc.right - 10, 15, titleRc.right + 48, 33 };
-    Theme::DrawSignalBadge(memDC, verPillRc, verTag.c_str(), t.palette.accentLight, t.palette.accent, 0);
+    RECT verPillRc = { titleRc.right - 10, 13, titleRc.right + 52, 31 };
+    Theme::DrawUnigramPill(memDC, verPillRc, verTag.c_str(), t.palette.accentLight, t.palette.accent, t.palette.accent, 0);
 
     // App Subtitle
     SelectObject(memDC, t.fontSmall);
     SetTextColor(memDC, t.palette.textSecondary);
-    RECT subRc = { iconX + iconW + 12, 32, iconX + iconW + 280, 48 };
-    DrawTextW(memDC, L"Hardware Telemetry, Driver Verification & Recovery", -1, &subRc, DT_SINGLELINE | DT_NOPREFIX);
+    RECT subRc = { iconX + iconSize + 12, 30, iconX + iconSize + 320, 48 };
+    DrawTextW(memDC, L"Aero Telemetry & Native Windows Driver Deployment", -1, &subRc, DT_SINGLELINE | DT_NOPREFIX);
 
-    // 2. Toolbar (headerHeight_ to headerHeight_ + toolbarHeight_)
+    // 3. Toolbar Command Deck (headerHeight_ to headerHeight_ + toolbarHeight_)
     int toolbarTop = headerHeight_;
     RECT toolbarRc = { 0, toolbarTop, cx, toolbarTop + toolbarHeight_ };
-    FillRect(memDC, &toolbarRc, t.brushSurface);
+    Theme::DrawGlassCard(memDC, toolbarRc, t.palette.surface, 210, t.palette.glassBorderSubtle, 0, false);
 
-    // Toolbar bottom line
+    // Toolbar bottom specular line
     SelectObject(memDC, borderPen);
     MoveToEx(memDC, 0, toolbarTop + toolbarHeight_ - 1, nullptr);
     LineTo(memDC, cx, toolbarTop + toolbarHeight_ - 1);
 
-    // 3. Splitter Bar Grip
+    // 4. Splitter Bar Grip
     int bodyTop = toolbarTop + toolbarHeight_;
     int bodyBottom = cy - statusHeight_ - (showProgressPanel_ ? progressHeight_ : 0);
     RECT splitRc = { splitterPos_ - 2, bodyTop, splitterPos_ + 2, bodyBottom };
     FillRect(memDC, &splitRc, isDraggingSplitter_ ? t.brushAccent : t.brushSurfaceRaised);
 
     // Centered pill grip on splitter
-    int gripH = 34;
+    int gripH = 38;
     int gripY = bodyTop + (bodyBottom - bodyTop - gripH) / 2;
-    RECT gripRc = { splitterPos_ - 2, gripY, splitterPos_ + 2, gripY + gripH };
-    Theme::DrawFrame(memDC, gripRc, isDraggingSplitter_ ? t.palette.accentHover : t.palette.border,
-                     t.palette.border, 2);
+    RECT gripRc = { splitterPos_ - 3, gripY, splitterPos_ + 3, gripY + gripH };
+    Theme::DrawGlassCard(memDC, gripRc, isDraggingSplitter_ ? t.palette.accentHover : t.palette.surfaceHover,
+                         240, t.palette.glassBorder, 3, true);
 
     SelectObject(memDC, oldPen);
     DeleteObject(borderPen);
@@ -478,11 +477,10 @@ LRESULT MainWindow::OnDrawItem(UINT /*idCtl*/, LPDRAWITEMSTRUCT pdis) {
     auto& t = CurrentTheme();
 
     if (pdis->CtlID == ID_APP_THEME_TOGGLE) {
-        // Theme Toggle Icon Button
+        // Theme Toggle Circular Glass Button
         COLORREF bg = isSelected ? t.palette.surfaceActive : t.palette.surfaceRaised;
-        Theme::DrawFrame(hdc, rc, bg, isFocus ? t.palette.borderFocus : t.palette.border, 4);
+        Theme::DrawGlassCard(hdc, rc, bg, 230, isFocus ? t.palette.accent : t.palette.glassBorder, (rc.bottom - rc.top) / 2, true);
 
-        // Sun or Moon glyph
         SetBkMode(hdc, TRANSPARENT);
         HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
         SetTextColor(hdc, t.palette.text);
@@ -493,9 +491,9 @@ LRESULT MainWindow::OnDrawItem(UINT /*idCtl*/, LPDRAWITEMSTRUCT pdis) {
     }
 
     if (pdis->CtlID == ID_APP_SETTINGS) {
-        // Settings Gear Button
+        // Settings Gear Circular Glass Button
         COLORREF bg = isSelected ? t.palette.surfaceActive : t.palette.surfaceRaised;
-        Theme::DrawFrame(hdc, rc, bg, isFocus ? t.palette.borderFocus : t.palette.border, 4);
+        Theme::DrawGlassCard(hdc, rc, bg, 230, isFocus ? t.palette.accent : t.palette.glassBorder, (rc.bottom - rc.top) / 2, true);
 
         SetBkMode(hdc, TRANSPARENT);
         HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
@@ -505,34 +503,17 @@ LRESULT MainWindow::OnDrawItem(UINT /*idCtl*/, LPDRAWITEMSTRUCT pdis) {
         return TRUE;
     }
 
-    // Standard / Action Toolbar Buttons
+    // Standard / Action Unigram Aero Pill Buttons
     wchar_t text[128] = L"";
     GetWindowTextW(pdis->hwndItem, text, ARRAYSIZE(text));
 
     if (pdis->CtlID == ID_APP_INSTALL) {
-        // Primary Accent Button
-        COLORREF bg = isDisabled ? (t.dark ? RGB(38, 43, 54) : RGB(220, 225, 230))
-                                 : (isSelected ? t.palette.accentPressed : t.palette.accent);
-        Theme::DrawFrame(hdc, rc, bg, bg, 4);
-
-        SetBkMode(hdc, TRANSPARENT);
-        HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
-        SetTextColor(hdc, isDisabled ? t.palette.textSecondary : RGB(255, 255, 255));
-        DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-        SelectObject(hdc, oldFont);
+        Theme::DrawAeroButton(hdc, rc, text, isSelected, isFocus, true, isDisabled);
         return TRUE;
     }
 
-    // Secondary Buttons (Scan, Select All, Undo)
-    COLORREF bg = isDisabled ? t.palette.surfaceRaised
-                             : (isSelected ? t.palette.surfaceActive : t.palette.surfaceRaised);
-    Theme::DrawFrame(hdc, rc, bg, isFocus ? t.palette.borderFocus : t.palette.border, 4);
-
-    SetBkMode(hdc, TRANSPARENT);
-    HGDIOBJ oldFont = SelectObject(hdc, t.fontBold);
-    SetTextColor(hdc, isDisabled ? t.palette.textSecondary : t.palette.text);
-    DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-    SelectObject(hdc, oldFont);
+    // Secondary Buttons (Scan Hardware, Select All, Undo Batch)
+    Theme::DrawAeroButton(hdc, rc, text, isSelected, isFocus, false, isDisabled);
     return TRUE;
 }
 

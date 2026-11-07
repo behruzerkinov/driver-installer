@@ -113,7 +113,7 @@ bool App::Initialize(int argc, wchar_t* argv[]) {
     auto logPath = AppDataDirectory() / "driver_nest.log";
     LogLevel level = debug_ ? LogLevel::Debug : LogLevel::Info;
     LogInitialize(logPath, level, debug_);
-    LOG_INFO(L"DriverNest starting. Version 1.2.0. Debug=" +
+    LOG_INFO(L"DriverNest starting. Version 1.3.0. Debug=" +
              std::wstring(debug_ ? L"true" : L"false"));
 
     // Load settings
